@@ -25,7 +25,7 @@ create_agx_arm_config(
 |名称|类型|说明|
 |---|---|---|
 |robot|str|["nero","piper","piper_h","piper_l","piper_x"]参数可选，选择预期创建的机械臂实例|
-|comm|str|["can"]可选，选择连接机械臂的通讯方式|
+|comm|str|["can"]可选，默认为`"can0`"，选择连接机械臂的通讯方式|
 |firmeware_version|str|默认为"default"，选择机械臂当前底层对应的主控固件版本|
 |---可选参数---|||
 |joint_limit|dict|默认可以不输入，程序内自动根据机械臂赋值指定的关节限位，如果要指定，需要手动输入dict类型的关节限位，单位：弧度，示例下文可见，暂时不会对手动输入的关节限位生效到实际控制中|
