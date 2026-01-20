@@ -34,6 +34,8 @@ pip3 install python-can
 
 ## 1.2 安装 pyAgxArm
 
+[在Ubuntu24.04安装第三方pip包的方法](./docs/Ubuntu24.04安装第三方pip包的方法.MD)
+
 注意是否在conda环境里
 
 ```bash
