@@ -14,7 +14,7 @@ Test:
 
 | Description                   | Document                                  |
 | ----------------------------- | ----------------------------------------- |
-| CAN module usage              | [can_user](./docs/can_user.MD)               |
+| CAN module usage              | [can_user](./docs/can_user(EN).MD)               |
 | Robotic Arm interface details | [docs](./docs)                               |
 | Robotic Arm DEMO              | [demos](./pyAgxArm/demos/DEMO_README(ZH).MD) |
 | CHANGELOG                     | [CHANGELOG](./CHANGELOG.MD)                  |
