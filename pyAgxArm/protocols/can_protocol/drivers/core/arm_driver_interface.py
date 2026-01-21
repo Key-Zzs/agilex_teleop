@@ -47,7 +47,7 @@ class ArmDriverInterface(ABC):
         ...
 
     @abstractmethod
-    def get_ee_pose(self):
+    def get_flange_pose(self):
         ...
 
     @abstractmethod

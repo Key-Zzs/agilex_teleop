@@ -286,16 +286,20 @@ while True:
     time.sleep(0.005)
 ```
 
-### 读取机械臂末端位姿 get_ee_pose()
+### 读取机械臂法兰位姿 get_flange_pose()
 
 - 功能说明:
 
 获取末端位姿消息
 
+说明（Terminology）：
+
+`flange` 指机械臂最后一个连杆（末端连杆）的安装法兰/连接面，是工具/末端执行器的机械安装接口。
+
 - 定义:
 
 ```python
-get_ee_pose(self) -> MessageAbstract[list[float]] | None
+get_flange_pose(self) -> MessageAbstract[list[float]] | None
 ```
 
 - 返回值:
@@ -304,7 +308,7 @@ get_ee_pose(self) -> MessageAbstract[list[float]] | None
 
 [x, y, z, rx, ry, rz]
 
-`ee.msg` 为长度 6 的 `list[float]`：`[x, y, z, roll, pitch, yaw]`，xyz 单位 m，姿态单位 rad，并带有 `hz/timestamp` 元数据。
+`flange.msg` 为长度 6 的 `list[float]`：`[x, y, z, roll, pitch, yaw]`，xyz 单位 m，姿态单位 rad，并带有 `hz/timestamp` 元数据。
 
 - 使用示例:
 
@@ -315,10 +319,10 @@ cfg = create_agx_arm_config(robot="piper", channel="can0")
 robot = AgxArmFactory.create_arm(cfg)
 robot.connect()
 while True:
-    ee = robot.get_ee_pose()
-    if ee is not None:
-        print(ee.msg) # list
-        print(ee.hz, ee.timestamp)
+    flange = robot.get_flange_pose()
+    if flange is not None:
+        print(flange.msg) # list
+        print(flange.hz, flange.timestamp)
     time.sleep(0.005)
 ```
 
@@ -658,16 +662,16 @@ robot.connect()
 robot.set_motion_mode(robot.MOTION_MODE.J)
 ```
 
-### 设定机械臂末端负载 set_ee_load()
+### 设定机械臂负载 set_payload()
 
 - 功能说明:
 
-该指令用来设定机械臂末端负载
+该指令用来设定机械臂负载（Payload）
 
 - 定义:
 
 ```python
-set_ee_load(self, load: Literal['empty', 'half', 'full'] = 'empty', timeout: float = 1.0) -> bool
+set_payload(self, load: Literal['empty', 'half', 'full'] = 'empty', timeout: float = 1.0) -> bool
 ```
 
 - 参数说明:
@@ -692,7 +696,7 @@ cfg = create_agx_arm_config(robot="piper", channel="can0")
 robot = AgxArmFactory.create_arm(cfg)
 robot.connect()
 # 设定满载
-robot.set_ee_load(robot.EE_LOAD.FULL)
+robot.set_payload(robot.PAYLOAD.FULL)
 ```
 
 ### 设定机械臂为主臂 set_master_mode()
@@ -1094,7 +1098,7 @@ get_joint_acc_limits(
 
 类型：`MessageAbstract[ArmMsgFeedbackCurrentMotorMaxAccLimit] | None`
 
-### 读取末端速度/加速度限制 get_ee_vel_acc_limits()
+### 读取法兰速度/加速度限制 get_flange_vel_acc_limits()
 
 - 功能说明:
 
@@ -1103,7 +1107,7 @@ get_joint_acc_limits(
 - 定义:
 
 ```python
-get_ee_vel_acc_limits(self, timeout: float = 1.0, min_interval: float = 1.0) -> MessageAbstract[ArmMsgFeedbackCurrentEndVelAccParam] | None
+get_flange_vel_acc_limits(self, timeout: float = 1.0, min_interval: float = 1.0) -> MessageAbstract[ArmMsgFeedbackCurrentEndVelAccParam] | None
 ```
 
 - 参数说明:
@@ -1229,7 +1233,7 @@ set_joint_acc_limits(
 |max_joint_acc|float|最大加速度（rad/s^2）|
 |timeout|float|等待 ACK/校验超时时间（秒），默认 1.0|
 
-### 配置末端速度/加速度限制 set_ee_vel_acc_limits()
+### 配置法兰速度/加速度限制 set_flange_vel_acc_limits()
 
 - 功能说明:
 
@@ -1238,7 +1242,7 @@ set_joint_acc_limits(
 - 定义:
 
 ```python
-set_ee_vel_acc_limits(
+set_flange_vel_acc_limits(
     self,
     end_max_linear_vel: float,
     end_max_angular_vel: float,
@@ -1265,7 +1269,7 @@ set_crash_protection_rating(
 ) -> bool
 ```
 
-### 恢复末端速度/加速度默认值 set_ee_vel_acc_limits_to_default()
+### 恢复法兰速度/加速度默认值 set_flange_vel_acc_limits_to_default()
 
 - 功能说明:
 
@@ -1274,7 +1278,7 @@ set_crash_protection_rating(
 - 定义:
 
 ```python
-set_ee_vel_acc_limits_to_default(self, timeout: float = 1.0) -> bool
+set_flange_vel_acc_limits_to_default(self, timeout: float = 1.0) -> bool
 ```
 
 ### 恢复关节角度/速度/加速度默认值 set_joint_angle_vel_acc_limits_to_default()
@@ -1289,22 +1293,16 @@ set_ee_vel_acc_limits_to_default(self, timeout: float = 1.0) -> bool
 set_joint_angle_vel_acc_limits_to_default(self, timeout: float = 1.0) -> bool
 ```
 
-### 设置关节/末端速度加速度周期反馈 set_joint_ee_vel_acc_period_feedback()
+### 设置各关节 link 的笛卡尔速度/加速度周期反馈 set_links_vel_acc_period_feedback()
 
 - 功能说明:
 
-设置关节/末端速度加速度周期反馈开关或周期参数（用于周期性反馈控制参数）。
+设置各关节 link 的笛卡尔速度/加速度周期反馈开关（对应 CAN 周期帧 `0x481~0x486`）。
 
 - 定义:
 
 ```python
-set_joint_ee_vel_acc_period_feedback(
-    self,
-    joint_vel_acc: bool = True,
-    ee_vel_acc: bool = True,
-    period_ms: int = 10,
-    timeout: float = 1.0,
-) -> bool
+set_links_vel_acc_period_feedback(self, enable: bool = False, timeout: float = 1.0) -> bool
 ```
 
 ### 末端直线运动 move_l()

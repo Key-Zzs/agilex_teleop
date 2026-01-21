@@ -159,8 +159,8 @@ def display_table(refresh_interval):
                 if None in joint_acc_limits:
                     continue
 
-                ee_vel_acc = robot.get_ee_vel_acc_limits()
-                if ee_vel_acc is None:
+                flange_vel_acc = robot.get_flange_vel_acc_limits()
+                if flange_vel_acc is None:
                     continue
 
                 crash_protection = robot.get_crash_protection_rating()
@@ -181,8 +181,8 @@ def display_table(refresh_interval):
             if joint is None:
                 continue
 
-            ee_pose = robot.get_ee_pose()
-            if ee_pose is None:
+            flange_pose = robot.get_flange_pose()
+            if flange_pose is None:
                 continue
 
             motor_states = [robot.get_motor_states(i) for i in range(1, robot.joint_nums + 1)]

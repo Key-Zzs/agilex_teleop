@@ -91,25 +91,36 @@ class ArmDriverAbstract(ArmDriverInterface):
 
     @overload
     def init_effector(
-        self, effector: Literal["agx_gripper"]
-    ) -> "AgxGripperDriverDefault":
-        ...
-
-    @overload
-    def init_effector(
-        self, effector: Literal["revo2"]
-    ) -> "Revo2DriverDefault":
-        ...
-
-    def init_effector(self, effector: str):
-        """
-        Initialize end-effector driver exactly once and return the driver instance.
+        self, effector: str
+    ) -> None:
+        """Initialize end-effector driver exactly once and return the driver instance.
 
         Notes
         -----
         - This method is intentionally one-shot to avoid registering multiple
           callbacks into the same DriverContext threads.
         - If called again, it raises RuntimeError.
+        """
+        ...
+
+    @overload
+    def init_effector(
+        self, effector: Literal["agx_gripper"]
+    ) -> "AgxGripperDriverDefault":
+        """agx_gripper end-effector driver.
+        """
+        ...
+
+    @overload
+    def init_effector(
+        self, effector: Literal["revo2"]
+    ) -> "Revo2DriverDefault":
+        """revo2 end-effector driver.
+        """
+        ...
+
+    def init_effector(self, effector: str):
+        """Initialize end-effector driver exactly once and return the driver instance.
         """
         if self._effector_kind is not None:
             raise RuntimeError(
@@ -176,7 +187,7 @@ class ArmDriverAbstract(ArmDriverInterface):
     def get_joint_states(self):
         raise NotImplementedError
 
-    def get_ee_pose(self):
+    def get_flange_pose(self):
         raise NotImplementedError
 
     def get_arm_status(self):

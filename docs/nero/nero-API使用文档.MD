@@ -225,16 +225,20 @@ while True:
     time.sleep(0.005)
 ```
 
-### 读取机械臂末端位姿 get_ee_pose()
+### 读取机械臂法兰位姿 get_flange_pose()
 
 - 功能说明:
 
 获取末端位姿消息
 
+说明（Terminology）：
+
+`flange` 指机械臂最后一个连杆（末端连杆）的安装法兰/连接面，是工具/末端执行器的机械安装接口。
+
 - 定义:
 
 ```python
-get_ee_pose(self) -> MessageAbstract[list[float]] | None
+get_flange_pose(self) -> MessageAbstract[list[float]] | None
 ```
 
 - 返回值:
@@ -243,7 +247,7 @@ get_ee_pose(self) -> MessageAbstract[list[float]] | None
 
 [x, y, z, rx, ry, rz]
 
-`ee.msg` 为长度 6 的 `list[float]`：`[x, y, z, roll, pitch, yaw]`，xyz 单位 m，姿态单位 rad，并带有 `hz/timestamp` 元数据。
+`flange.msg` 为长度 6 的 `list[float]`：`[x, y, z, roll, pitch, yaw]`，xyz 单位 m，姿态单位 rad，并带有 `hz/timestamp` 元数据。
 
 - 使用示例:
 
@@ -254,10 +258,10 @@ cfg = create_agx_arm_config(robot="nero", channel="can0")
 robot = AgxArmFactory.create_arm(cfg)
 robot.connect()
 while True:
-    ee = robot.get_ee_pose()
-    if ee is not None:
-        print(ee.msg) # list
-        print(ee.hz, ee.timestamp)
+    flange = robot.get_flange_pose()
+    if flange is not None:
+        print(flange.msg) # list
+        print(flange.hz, flange.timestamp)
     time.sleep(0.005)
 ```
 

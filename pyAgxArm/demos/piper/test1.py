@@ -1,6 +1,6 @@
 from pyAgxArm.api.agx_arm_factory import create_agx_arm_config, AgxArmFactory
 import time
-robot_cfg = create_agx_arm_config(robot="piper", comm="can", channel="can0", interface="socketcan")
+robot_cfg = create_agx_arm_config(robot="piper_h", comm="can", channel="can0", interface="socketcan")
 print(robot_cfg)
 robot = AgxArmFactory.create_arm(robot_cfg)
 robot.connect()
@@ -24,7 +24,7 @@ print(end_effector.__doc__)
 # robot.set_installation_pos(robot.INSTALLATION_POS.HORIZONTAL)
 # robot.set_motion_mode(robot.MOTION_MODE.J)
 
-# print(robot.set_joint_ee_vel_acc_period_feedback(False))
+# print(robot.set_links_vel_acc_period_feedback(False))
 
 
 # -------------------------- Move ----------------------------
@@ -105,7 +105,7 @@ while True:
 
     # print(robot.get_firmware())
     # print(robot.get_joint_states())
-    # print(robot.get_ee_pose())
+    # print(robot.get_flange_pose())
 
     # print(robot.get_joint_ctrl_states())
     # print(end_effector.get_gripper_ctrl_states())
@@ -115,7 +115,7 @@ while True:
     # print(robot.get_joint_enable_status(1))
     # print(robot.get_joints_enable_status_list())
 
-    # print(robot.get_ee_vel_acc_limits())
+    # print(robot.get_flange_vel_acc_limits())
 
     # print(robot.get_crash_protection_rating())
 
@@ -223,7 +223,7 @@ while True:
 
 # -----------------------------------------------------------------------------------------------
 
-# print(robot.set_ee_load(robot.EE_LOAD.EMPTY))
+# print(robot.set_payload(robot.PAYLOAD.EMPTY))
 
 # -----------------------------------------------------------------------------------------------
 
@@ -250,7 +250,7 @@ while True:
 # print(end_effector.get_gripper_teaching_pendant_param())
 
 
-# print(robot.get_ee_vel_acc_limits())
-# print(robot.set_ee_vel_acc_limits(0.5, 0.13, 0.8, 0.2))
-# print(robot.set_ee_vel_acc_limits_to_default())
-# print(robot.get_ee_vel_acc_limits())
+# print(robot.get_flange_vel_acc_limits())
+# print(robot.set_flange_vel_acc_limits(0.5, 0.13, 0.8, 0.2))
+# print(robot.set_flange_vel_acc_limits_to_default())
+# print(robot.get_flange_vel_acc_limits())

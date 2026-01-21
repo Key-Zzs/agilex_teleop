@@ -4,6 +4,12 @@ class Driver(PiperDriverDefault):
    """
    PiperX CAN driver.
 
+   Terminology
+   -----------
+   `flange`:
+   - The mounting face / connection interface on the arm's last link
+     (mechanical tool interface).
+
    Common conventions
    ------------------
    `timeout` (for request/response style APIs):

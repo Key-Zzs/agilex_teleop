@@ -1,7 +1,6 @@
 # agx_arm_factory.pyi
-from typing_extensions import TypedDict, Literal
-from typing import Any, Dict, Type, TypeVar, overload
-from ..protocols.can_protocol.drivers.core.arm_driver_interface import ArmDriverInterface
+from typing_extensions import Literal
+from typing import Any, TypeVar, overload
 from ..protocols.can_protocol.drivers.piper import PiperDriverDefault
 from ..protocols.can_protocol.drivers.nero import NeroDriverDefault
 from ..protocols.can_protocol.drivers.piper_h import PiperHDriverDefault
@@ -65,16 +64,163 @@ class AgxArmFactory:
 
     @classmethod
     @overload
-    def create_arm(cls, config: NeroCanDefaultConfig, **kwargs) -> NeroDriverDefault: ...
+    def create_arm(cls, config: dict, **kwargs) -> None:
+        """
+        Create Arm Driver instance.
+        """
+        ...
+
     @classmethod
     @overload
-    def create_arm(cls, config: PiperCanDefaultConfig, **kwargs) -> PiperDriverDefault: ...
+    def create_arm(cls, config: NeroCanDefaultConfig, **kwargs) -> NeroDriverDefault:
+        """Nero CAN driver.
+
+        Terminology
+        -----------
+        `flange`:
+        - The mounting face / connection interface on the arm's last link
+          (mechanical tool interface).
+
+        Common conventions
+        ------------------
+        `timeout` (for request/response style APIs):
+        - `timeout < 0.0` raises ValueError.
+        - `timeout == 0.0`: non-blocking; evaluate readiness once and return
+          immediately.
+        - `timeout > 0.0`: blocking; poll until ready or timeout expires.
+
+        `joint_index`:
+        - `joint_index == 255` means "all joints".
+
+        `set_*` return semantics:
+        - Many `set_*` APIs are ACK-only: True means the controller acknowledged the
+          request.
+          This does not strictly guarantee the setting is already applied.
+        - Some `set_*` APIs additionally verify by reading back state; their
+          docstrings will mention the verification method if applicable.
+        """
+        ...
+
     @classmethod
     @overload
-    def create_arm(cls, config: PiperHCanDefaultConfig, **kwargs) -> PiperHDriverDefault: ...
+    def create_arm(cls, config: PiperCanDefaultConfig, **kwargs) -> PiperDriverDefault:
+        """Piper CAN driver.
+
+        Terminology
+        -----------
+        `flange`:
+        - The mounting face / connection interface on the arm's last link
+          (mechanical tool interface).
+
+        Common conventions
+        ------------------
+        `timeout` (for request/response style APIs):
+        - `timeout < 0.0` raises ValueError.
+        - `timeout == 0.0`: non-blocking; evaluate readiness once and return
+          immediately.
+        - `timeout > 0.0`: blocking; poll until ready or timeout expires.
+
+        `joint_index`:
+        - `joint_index == 255` means "all joints".
+
+        `set_*` return semantics:
+        - Many `set_*` APIs are ACK-only: True means the controller acknowledged the
+          request.
+          This does not strictly guarantee the setting is already applied.
+        - Some `set_*` APIs additionally verify by reading back state; their
+          docstrings will mention the verification method if applicable.
+        """
+        ...
+    
     @classmethod
     @overload
-    def create_arm(cls, config: PiperLCanDefaultConfig, **kwargs) -> PiperLDriverDefault: ...
+    def create_arm(cls, config: PiperHCanDefaultConfig, **kwargs) -> PiperHDriverDefault:
+        """PiperH CAN driver.
+
+        Terminology
+        -----------
+        `flange`:
+        - The mounting face / connection interface on the arm's last link
+          (mechanical tool interface).
+
+        Common conventions
+        ------------------
+        `timeout` (for request/response style APIs):
+        - `timeout < 0.0` raises ValueError.
+        - `timeout == 0.0`: non-blocking; evaluate readiness once and return
+          immediately.
+        - `timeout > 0.0`: blocking; poll until ready or timeout expires.
+
+        `joint_index`:
+        - `joint_index == 255` means "all joints".
+
+        `set_*` return semantics:
+        - Many `set_*` APIs are ACK-only: True means the controller acknowledged the
+          request.
+          This does not strictly guarantee the setting is already applied.
+        - Some `set_*` APIs additionally verify by reading back state; their
+          docstrings will mention the verification method if applicable.
+        """
+        ...
+    
     @classmethod
     @overload
-    def create_arm(cls, config: PiperXCanDefaultConfig, **kwargs) -> PiperXDriverDefault: ...
+    def create_arm(cls, config: PiperLCanDefaultConfig, **kwargs) -> PiperLDriverDefault:
+        """PiperL CAN driver.
+
+        Terminology
+        -----------
+        `flange`:
+        - The mounting face / connection interface on the arm's last link
+          (mechanical tool interface).
+
+        Common conventions
+        ------------------
+        `timeout` (for request/response style APIs):
+        - `timeout < 0.0` raises ValueError.
+        - `timeout == 0.0`: non-blocking; evaluate readiness once and return
+          immediately.
+        - `timeout > 0.0`: blocking; poll until ready or timeout expires.
+
+        `joint_index`:
+        - `joint_index == 255` means "all joints".
+
+        `set_*` return semantics:
+        - Many `set_*` APIs are ACK-only: True means the controller acknowledged the
+          request.
+          This does not strictly guarantee the setting is already applied.
+        - Some `set_*` APIs additionally verify by reading back state; their
+          docstrings will mention the verification method if applicable.
+        """
+        ...
+    
+    @classmethod
+    @overload
+    def create_arm(cls, config: PiperXCanDefaultConfig, **kwargs) -> PiperXDriverDefault:
+        """PiperX CAN driver.
+
+        Terminology
+        -----------
+        `flange`:
+        - The mounting face / connection interface on the arm's last link
+          (mechanical tool interface).
+
+        Common conventions
+        ------------------
+        `timeout` (for request/response style APIs):
+        - `timeout < 0.0` raises ValueError.
+        - `timeout == 0.0`: non-blocking; evaluate readiness once and return
+          immediately.
+        - `timeout > 0.0`: blocking; poll until ready or timeout expires.
+
+        `joint_index`:
+        - `joint_index == 255` means "all joints".
+
+        `set_*` return semantics:
+        - Many `set_*` APIs are ACK-only: True means the controller acknowledged the
+          request.
+          This does not strictly guarantee the setting is already applied.
+        - Some `set_*` APIs additionally verify by reading back state; their
+          docstrings will mention the verification method if applicable.
+        """
+        ...

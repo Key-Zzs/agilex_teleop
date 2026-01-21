@@ -41,6 +41,12 @@ T = TypeVar("T")
 class Driver(ArmDriverAbstract):
     """Piper CAN driver.
 
+    Terminology
+    -----------
+    `flange`:
+    - The mounting face / connection interface on the arm's last link
+      (mechanical tool interface).
+
     Common conventions
     ------------------
     `timeout` (for request/response style APIs):
@@ -82,12 +88,12 @@ class Driver(ArmDriverAbstract):
             RIGHT: 0x03,
         }
 
-    class EE_LOAD:
+    class PAYLOAD:
         """
-        End-effector load constants.
+        Arm payload constants.
 
         Use:
-            robot.set_ee_load(robot.EE_LOAD.EMPTY)
+            robot.set_payload(robot.PAYLOAD.EMPTY)
         """
 
         EMPTY: Final[Literal["empty"]] = "empty"
@@ -375,8 +381,8 @@ class Driver(ArmDriverAbstract):
         else:
             return None
 
-    def get_ee_pose(self):
-        """Get current end-effector pose feedback.
+    def get_flange_pose(self):
+        """Get current flange pose feedback.
 
         Returns
         -------
@@ -405,11 +411,11 @@ class Driver(ArmDriverAbstract):
 
         Examples
         --------
-        >>> ep = robot.get_ee_pose()
-        >>> if ep is not None:
-        >>>     x, y, z, roll, pitch, yaw = ep.msg
+        >>> fp = robot.get_flange_pose()
+        >>> if fp is not None:
+        >>>     x, y, z, roll, pitch, yaw = fp.msg
         >>>     print(x, y, z, roll, pitch, yaw)
-        >>>     print(ep.hz, ep.timestamp)
+        >>>     print(fp.hz, fp.timestamp)
         """
         end_pose = None
         if getattr(self, "_end_pose", None) is None:
@@ -1520,8 +1526,8 @@ class Driver(ArmDriverAbstract):
             stamp_attr=f"joint_acc:{joint_index}",
         )
 
-    def get_ee_vel_acc_limits(self, timeout: float = 1.0, min_interval: float = 1.0):
-        """Get the end effector velocity and acceleration limits.
+    def get_flange_vel_acc_limits(self, timeout: float = 1.0, min_interval: float = 1.0):
+        """Get the flange velocity and acceleration limits.
 
         Parameters
         ----------
@@ -1552,11 +1558,11 @@ class Driver(ArmDriverAbstract):
 
         Examples
         --------
-        >>> limit = robot.get_ee_vel_acc_limits()
+        >>> limit = robot.get_flange_vel_acc_limits()
         >>> if limit is not None:
         >>>     print(limit.msg.end_max_linear_vel, limit.msg.end_max_angular_vel)
         >>>     print(limit.msg.end_max_linear_acc, limit.msg.end_max_angular_acc)
-        >>> # Non-blocking: `robot.get_ee_vel_acc_limits(timeout=0.0)`
+        >>> # Non-blocking: `robot.get_flange_vel_acc_limits(timeout=0.0)`
         """
         def request() -> None:
             self._send_msg(self._MSG_ParamEnquiryAndConfig(param_enquiry=1))
@@ -1583,7 +1589,7 @@ class Driver(ArmDriverAbstract):
             clear=clear,
             timeout=timeout,
             min_interval=min_interval,
-            stamp_attr="ee_vel_acc",
+            stamp_attr="flange_vel_acc",
         )
         return res
 
@@ -1909,19 +1915,19 @@ class Driver(ArmDriverAbstract):
             )
             return bool(res)
 
-    def set_ee_load(
+    def set_payload(
         self,
         load: Literal['empty', 'half', 'full'] = 'empty',
         timeout: float = 1.0
     ):
-        """Set the end effector load.
+        """Set the arm payload.
 
         Parameters
         ----------
         `load`: Literal['empty', 'half', 'full']
-        - `EE_LOAD.EMPTY`: empty load
-        - `EE_LOAD.HALF`: half load
-        - `EE_LOAD.FULL`: full load
+        - `PAYLOAD.EMPTY`: empty payload
+        - `PAYLOAD.HALF`: half payload
+        - `PAYLOAD.FULL`: full payload
 
         `timeout`: float, optional
         - Timeout in seconds. Default is 1.0.
@@ -1937,28 +1943,28 @@ class Driver(ArmDriverAbstract):
 
         Examples
         --------
-        >>> # 1. Set the end effector load to empty
-        >>> success = robot.set_ee_load(robot.EE_LOAD.EMPTY)
+        >>> # 1. Set payload to empty
+        >>> success = robot.set_payload(robot.PAYLOAD.EMPTY)
         >>> if success:
-        >>>     print("End effector load set successfully")
+        >>>     print("Payload set successfully")
         >>>
-        >>> # 2. Set the end effector load to half
-        >>> success = robot.set_ee_load(robot.EE_LOAD.HALF)
+        >>> # 2. Set payload to half
+        >>> success = robot.set_payload(robot.PAYLOAD.HALF)
         >>> if success:
-        >>>     print("End effector load set successfully")
+        >>>     print("Payload set successfully")
         >>>
-        >>> # 3. Set the end effector load to full
-        >>> success = robot.set_ee_load(robot.EE_LOAD.FULL)
+        >>> # 3. Set payload to full
+        >>> success = robot.set_payload(robot.PAYLOAD.FULL)
         >>> if success:
-        >>>     print("End effector load set successfully")
+        >>>     print("Payload set successfully")
         """
         # Input validation
         self._ctx._validate_timeout(timeout)
-        if load not in self.EE_LOAD._VALUES:
+        if load not in self.PAYLOAD._VALUES:
             raise ValueError(
-                f"Load should be in EE_LOAD: {self.EE_LOAD._VALUES}")
+                f"Load should be in PAYLOAD: {self.PAYLOAD._VALUES}")
 
-        load_code = self.EE_LOAD._LOAD_CODE[load]
+        load_code = self.PAYLOAD._LOAD_CODE[load]
 
         # Clear previous response
         self._clear_resp_set_instruction()
@@ -1974,10 +1980,10 @@ class Driver(ArmDriverAbstract):
             request=request,
             instruction_index=0x77,
             timeout=timeout,
-            stamp_key="set_ee_load",
+            stamp_key="set_payload",
         )
 
-    def set_ee_vel_acc_limits(
+    def set_flange_vel_acc_limits(
         self,
         max_linear_vel: Optional[float] = None,
         max_angular_vel: Optional[float] = None,
@@ -1985,7 +1991,7 @@ class Driver(ArmDriverAbstract):
         max_angular_acc: Optional[float] = None,
         timeout: float = 1.0,
     ):
-        """Set the end effector velocity and acceleration limits.
+        """Set the flange velocity and acceleration limits.
 
         Parameters
         ----------
@@ -2016,14 +2022,14 @@ class Driver(ArmDriverAbstract):
 
         Examples
         --------
-        >>> success = robot.set_ee_vel_acc_limits(
+        >>> success = robot.set_flange_vel_acc_limits(
         ...     max_linear_vel=0.5,
         ...     max_angular_vel=0.13,
         ...     max_linear_acc=0.8,
         ...     max_angular_acc=0.2,
         ... )
         >>> if success:
-        >>>     print("End effector velocity and acceleration limits set successfully")
+        >>>     print("Flange velocity and acceleration limits set successfully")
         """
         # Input validation
         self._ctx._validate_timeout(timeout)
@@ -2064,7 +2070,7 @@ class Driver(ArmDriverAbstract):
             )
 
         def check() -> bool:
-            res = self.get_ee_vel_acc_limits()
+            res = self.get_flange_vel_acc_limits()
             return not (
                 res is None
                 or max_linear_vel != 0x7FFF
@@ -2082,7 +2088,7 @@ class Driver(ArmDriverAbstract):
             instruction_index=0x79,
             check=check,
             timeout=timeout,
-            stamp_key="set_ee_vel_acc_limits",
+            stamp_key="set_flange_vel_acc_limits",
         )
 
     def set_crash_protection_rating(
@@ -2159,8 +2165,8 @@ class Driver(ArmDriverAbstract):
             stamp_key="set_crash_protection_rating",
         )
 
-    def set_ee_vel_acc_limits_to_default(self, timeout: float = 1.0):
-        """Set the end effector velocity and acceleration limits to default.
+    def set_flange_vel_acc_limits_to_default(self, timeout: float = 1.0):
+        """Set the flange velocity and acceleration limits to default.
 
         Parameters
         ----------
@@ -2178,10 +2184,10 @@ class Driver(ArmDriverAbstract):
 
         Examples
         --------
-        >>> success = robot.set_ee_vel_acc_limits_to_default()
+        >>> success = robot.set_flange_vel_acc_limits_to_default()
         >>> if success:
         >>>     print(
-        ...         "End effector velocity and acceleration limits set to default "
+        ...         "Flange velocity and acceleration limits set to default "
         ...         "successfully"
         ...     )
         """
@@ -2198,7 +2204,7 @@ class Driver(ArmDriverAbstract):
             request=request,
             instruction_index=0x77,
             timeout=timeout,
-            stamp_key="set_ee_vel_acc_limits_to_default",
+            stamp_key="set_flange_vel_acc_limits_to_default",
         )
 
     def set_joint_angle_vel_acc_limits_to_default(self, timeout: float = 1.0):
@@ -2243,10 +2249,10 @@ class Driver(ArmDriverAbstract):
             stamp_key="set_joint_angle_vel_acc_limits_to_default",
         )
 
-    def set_joint_ee_vel_acc_period_feedback(
+    def set_links_vel_acc_period_feedback(
         self, enable: bool = False, timeout: float = 1.0
     ):
-        """Set the joint end effector velocity and acceleration period
+        """Set each joint link Cartesian velocity and acceleration period
         feedback.
 
         In the lower-level main control, this function has been deprecated, but
@@ -2257,10 +2263,10 @@ class Driver(ArmDriverAbstract):
         Parameters
         ----------
         `enable`: bool
-        - True: enable the joint end effector velocity and acceleration period
-            feedback.
-        - False: disable the joint end effector velocity and acceleration period
-            feedback.
+        - True: enable the joint links Cartesian velocity and acceleration
+            period feedback.
+        - False: disable the joint links Cartesian velocity and acceleration
+            period feedback.
 
         `timeout`: float, optional
         - Timeout in seconds. Default is 1.0.
@@ -2283,8 +2289,7 @@ class Driver(ArmDriverAbstract):
             periodic frames).
             For example, run:
 
-                candump can0,481:7FF,482:7FF,483:7FF, \\
-                    484:7FF,485:7FF,486:7FF
+                candump can0 | grep "48[1-6]"
 
             before/after calling this API and compare the output.
         """
@@ -2304,5 +2309,5 @@ class Driver(ArmDriverAbstract):
             request=request,
             instruction_index=0x77,
             timeout=timeout,
-            stamp_key="set_joint_ee_vel_acc_period_feedback",
+            stamp_key="set_links_vel_acc_period_feedback",
         )

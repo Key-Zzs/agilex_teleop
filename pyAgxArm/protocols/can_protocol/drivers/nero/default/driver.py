@@ -22,6 +22,12 @@ from ....msgs.nero.default import (
 class Driver(ArmDriverAbstract):
     """Nero CAN driver.
 
+    Terminology
+    -----------
+    `flange`:
+    - The mounting face / connection interface on the arm's last link
+      (mechanical tool interface).
+
     Common conventions
     ------------------
     `timeout` (for request/response style APIs):
@@ -183,8 +189,8 @@ class Driver(ArmDriverAbstract):
         else:
             return None
 
-    def get_ee_pose(self):
-        """Get current end-effector pose feedback.
+    def get_flange_pose(self):
+        """Get current flange pose feedback.
 
         Returns
         -------
@@ -213,11 +219,11 @@ class Driver(ArmDriverAbstract):
 
         Examples
         --------
-        >>> ep = robot.get_ee_pose()
-        >>> if ep is not None:
-        >>>     x, y, z, roll, pitch, yaw = ep.msg
+        >>> fp = robot.get_flange_pose()
+        >>> if fp is not None:
+        >>>     x, y, z, roll, pitch, yaw = fp.msg
         >>>     print(x, y, z, roll, pitch, yaw)
-        >>>     print(ep.hz, ep.timestamp)
+        >>>     print(fp.hz, fp.timestamp)
         """
         end_pose = None
         if getattr(self, "_end_pose", None) is None:
