@@ -1183,7 +1183,7 @@ class Driver(ArmDriverAbstract):
 
             T_ref = kp * (p_des - p) + kd * (v_des - v) + t_ff
 
-        where p/v are the measured joint position/velocity.
+        where `p/v` are the measured joint `position/velocity`.
 
         Parameters
         ----------

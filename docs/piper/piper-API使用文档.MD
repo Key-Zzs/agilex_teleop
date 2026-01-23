@@ -1418,9 +1418,9 @@ while True:
 
 控制器概念上会计算参考力矩：
 
-  \(T_{ref} = kp \cdot (p\\_des - p) + kd \cdot (v\\_des - v) + t\\_{ff}\)
+$$T_{\text{ref}} = k_p \cdot (p_{\text{des}} - p) + k_d \cdot (v_{\text{des}} - v) + T_{\text{ff}}$$
 
-  其中 \(p/v\) 为关节实测位置/速度。
+其中 \(p/v\) 为关节实测位置/速度。
 
 典型用法建议：
 
