@@ -154,4 +154,5 @@ class PhysicalValueValidator:
                 yaw, yaw_min, yaw_max, 0.0
             ):
             return False
+        return True
         
