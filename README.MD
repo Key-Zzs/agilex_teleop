@@ -91,7 +91,7 @@ pip3 install .
 ```python
 import time
 from pyAgxArm import create_agx_arm_config, AgxArmFactory
-cfg = create_agx_arm_config(robot="nero",channel="can0")
+cfg = create_agx_arm_config(robot="nero", comm="can", channel="can0")
 robot = AgxArmFactory.create_arm(cfg)
 # 创建通讯实例并打开读取线程
 robot.connect()

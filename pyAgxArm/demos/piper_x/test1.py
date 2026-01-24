@@ -270,6 +270,11 @@ while True:
 # time.sleep(0.1)
 # print(robot.get_tcp_pose())
 
+# flange_pose = robot.get_flange_pose()
+# if flange_pose:
+#     tcp_pose = robot.get_flange2tcp_pose(flange_pose.msg)
+#     print(tcp_pose)
+
 # pose = robot.get_tcp2flange_pose([0.3, 0.0, 0.3, 0.0, 1.570796326794896619, 0.0])
 # print(pose)
 # robot.move_p(pose)

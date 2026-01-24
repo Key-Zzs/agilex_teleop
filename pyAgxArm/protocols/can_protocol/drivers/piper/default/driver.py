@@ -387,7 +387,7 @@ class Driver(ArmDriverAbstract):
 
         Message
         -------
-        `list[float]`-> `[x, y, z, roll, pitch, yaw]`
+        `list[float]`: `[x, y, z, roll, pitch, yaw]`
 
         `x, y, z`: Position, unit: m
 

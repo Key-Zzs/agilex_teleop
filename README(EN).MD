@@ -94,7 +94,7 @@ Please refer to：[can_user](./docs/can_user.MD)
 ```python
 import time
 from pyAgxArm import create_agx_arm_config, AgxArmFactory
-cfg = create_agx_arm_config(robot="nero",channel="can0")
+cfg = create_agx_arm_config(robot="nero", comm="can", channel="can0")
 robot = AgxArmFactory.create_arm(cfg)
 # Create a Communication Instance and Start the Reading Thread
 robot.connect()

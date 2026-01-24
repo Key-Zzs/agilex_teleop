@@ -79,7 +79,7 @@ create_agx_arm_config(
 ```python
 from pyAgxArm import create_agx_arm_config
 
-cfg = create_agx_arm_config(robot="nero", channel="can0")
+cfg = create_agx_arm_config(robot="nero", comm="can", channel="can0")
 print(cfg)
 ```
 
@@ -112,7 +112,7 @@ create_arm(cls, config: dict, **kwargs) -> T
 ```python
 from pyAgxArm import create_agx_arm_config, AgxArmFactory
 
-cfg = create_agx_arm_config(robot="nero", channel="can0")
+cfg = create_agx_arm_config(robot="nero", comm="can", channel="can0")
 robot = AgxArmFactory.create_arm(cfg)
 ```
 
@@ -139,7 +139,7 @@ connect(self, start_read_thread: bool = True) -> None
 ```python
 from pyAgxArm import create_agx_arm_config, AgxArmFactory
 
-cfg = create_agx_arm_config(robot="nero", channel="can0")
+cfg = create_agx_arm_config(robot="nero", comm="can", channel="can0")
 robot = AgxArmFactory.create_arm(cfg)
 robot.connect()
 ```
@@ -169,7 +169,7 @@ init_effector(self, effector: str) -> EffectorDriver
 ```python
 from pyAgxArm import create_agx_arm_config, AgxArmFactory
 
-cfg = create_agx_arm_config(robot="nero", channel="can0")
+cfg = create_agx_arm_config(robot="nero", comm="can", channel="can0")
 robot = AgxArmFactory.create_arm(cfg)
 robot.connect()
 
@@ -199,7 +199,7 @@ joint_nums: int
 import time
 from pyAgxArm import create_agx_arm_config, AgxArmFactory
 
-cfg = create_agx_arm_config(robot="nero", channel="can0")
+cfg = create_agx_arm_config(robot="nero", comm="can", channel="can0")
 robot = AgxArmFactory.create_arm(cfg)
 robot.connect()
 
@@ -264,7 +264,7 @@ get_arm_status(self) -> MessageAbstract[ArmMsgFeedbackStatus] | None
 import time
 from pyAgxArm import create_agx_arm_config, AgxArmFactory
 
-cfg = create_agx_arm_config(robot="nero", channel="can0")
+cfg = create_agx_arm_config(robot="nero", comm="can", channel="can0")
 robot = AgxArmFactory.create_arm(cfg)
 robot.connect()
 
@@ -300,7 +300,7 @@ get_joint_states(self) -> MessageAbstract[list[float]] | None
 import time
 from pyAgxArm import create_agx_arm_config, AgxArmFactory
 
-cfg = create_agx_arm_config(robot="nero", channel="can0")
+cfg = create_agx_arm_config(robot="nero", comm="can", channel="can0")
 robot = AgxArmFactory.create_arm(cfg)
 robot.connect()
 
@@ -344,7 +344,7 @@ get_flange_pose(self) -> MessageAbstract[list[float]] | None
 import time
 from pyAgxArm import create_agx_arm_config, AgxArmFactory
 
-cfg = create_agx_arm_config(robot="nero", channel="can0")
+cfg = create_agx_arm_config(robot="nero", comm="can", channel="can0")
 robot = AgxArmFactory.create_arm(cfg)
 robot.connect()
 
@@ -392,7 +392,7 @@ get_motor_states(self, joint_index: Literal[1, 2, 3, 4, 5, 6, 7]) -> MessageAbst
 ```python
 from pyAgxArm import create_agx_arm_config, AgxArmFactory
 
-cfg = create_agx_arm_config(robot="nero", channel="can0")
+cfg = create_agx_arm_config(robot="nero", comm="can", channel="can0")
 robot = AgxArmFactory.create_arm(cfg)
 robot.connect()
 
@@ -439,7 +439,7 @@ get_driver_states(self, joint_index: Literal[1, 2, 3, 4, 5, 6, 7]) -> MessageAbs
 ```python
 from pyAgxArm import create_agx_arm_config, AgxArmFactory
 
-cfg = create_agx_arm_config(robot="nero", channel="can0")
+cfg = create_agx_arm_config(robot="nero", comm="can", channel="can0")
 robot = AgxArmFactory.create_arm(cfg)
 robot.connect()
 
@@ -477,7 +477,7 @@ get_joint_enable_status(self, joint_index: Literal[1, 2, 3, 4, 5, 6, 7, 255]) ->
 ```python
 from pyAgxArm import create_agx_arm_config, AgxArmFactory
 
-cfg = create_agx_arm_config(robot="nero", channel="can0")
+cfg = create_agx_arm_config(robot="nero", comm="can", channel="can0")
 robot = AgxArmFactory.create_arm(cfg)
 robot.connect()
 
@@ -507,7 +507,7 @@ get_joints_enable_status_list(self) -> list[bool]
 ```python
 from pyAgxArm import create_agx_arm_config, AgxArmFactory
 
-cfg = create_agx_arm_config(robot="nero", channel="can0")
+cfg = create_agx_arm_config(robot="nero", comm="can", channel="can0")
 robot = AgxArmFactory.create_arm(cfg)
 robot.connect()
 
@@ -539,7 +539,7 @@ set_speed_percent(self, percent: int = 100) -> None
 ```python
 from pyAgxArm import create_agx_arm_config, AgxArmFactory
 
-cfg = create_agx_arm_config(robot="nero", channel="can0")
+cfg = create_agx_arm_config(robot="nero", comm="can", channel="can0")
 robot = AgxArmFactory.create_arm(cfg)
 robot.connect()
 
@@ -570,7 +570,7 @@ set_motion_mode(self, motion_mode: Literal["p", "j"] = "p") -> None
 ```python
 from pyAgxArm import create_agx_arm_config, AgxArmFactory
 
-cfg = create_agx_arm_config(robot="nero", channel="can0")
+cfg = create_agx_arm_config(robot="nero", comm="can", channel="can0")
 robot = AgxArmFactory.create_arm(cfg)
 robot.connect()
 
@@ -604,7 +604,7 @@ set_tcp_offset(self, pose: list[float]) -> None
 ```python
 from pyAgxArm import create_agx_arm_config, AgxArmFactory
 
-cfg = create_agx_arm_config(robot="nero", channel="can0")
+cfg = create_agx_arm_config(robot="nero", comm="can", channel="can0")
 robot = AgxArmFactory.create_arm(cfg)
 robot.connect()
 
@@ -638,7 +638,7 @@ get_tcp_pose(self) -> MessageAbstract[list[float]] | None
 import time
 from pyAgxArm import create_agx_arm_config, AgxArmFactory
 
-cfg = create_agx_arm_config(robot="nero", channel="can0")
+cfg = create_agx_arm_config(robot="nero", comm="can", channel="can0")
 robot = AgxArmFactory.create_arm(cfg)
 robot.connect()
 
@@ -650,6 +650,50 @@ while True:
         print(tcp.msg)
         print(tcp.hz, tcp.timestamp)
     time.sleep(0.02)
+```
+
+### 法兰位姿转TCP位姿 get_flange2tcp_pose()
+
+- 功能说明:
+
+输入法兰位姿（基座/世界坐标系下），根据 `set_tcp_offset()` 保存的偏移值算出对应的 TCP 位姿。
+
+- 定义:
+
+```python
+get_flange2tcp_pose(self, flange_pose: list[float]) -> list[float]
+```
+
+- 参数说明:
+
+|名称|类型|说明|
+|---|---|---|
+|flange_pose|list[float]|法兰位姿 `[x, y, z, roll, pitch, yaw]`（m / rad）。范围：`roll/yaw` 为 `[-pi, pi]`，`pitch` 为 `[-pi/2, pi/2]`|
+
+- 返回值:
+
+类型：`list[float]`
+
+返回 TCP 位姿 `[x, y, z, roll, pitch, yaw]`（m / rad）。
+
+- 使用示例:
+
+```python
+from pyAgxArm import create_agx_arm_config, AgxArmFactory
+
+cfg = create_agx_arm_config(robot="piper", comm="can", channel="can0")
+robot = AgxArmFactory.create_arm(cfg)
+robot.connect()
+
+# 示例一：直接指定法兰位姿
+tcp_pose = robot.get_flange2tcp_pose([-0.16, -0.043, 0.69, 1.118, 0.9272, 0.1482])
+print("tcp_pose =", tcp_pose)
+
+# 示例二：从当前位姿获取法兰位姿，与 `get_tcp_pose()` 得到的pose相同
+flange_pose = robot.get_flange_pose()
+if flange_pose:
+    tcp_pose = robot.get_flange2tcp_pose(flange_pose)
+    print("tcp_pose =", tcp_pose)
 ```
 
 ### 目标TCP位姿转法兰位姿 get_tcp2flange_pose()
@@ -683,7 +727,7 @@ get_tcp2flange_pose(self, tcp_pose: list[float]) -> list[float]
 ```python
 from pyAgxArm import create_agx_arm_config, AgxArmFactory
 
-cfg = create_agx_arm_config(robot="nero", channel="can0")
+cfg = create_agx_arm_config(robot="nero", comm="can", channel="can0")
 robot = AgxArmFactory.create_arm(cfg)
 robot.connect()
 
@@ -728,7 +772,7 @@ enable(self, joint_index: Literal[1, 2, 3, 4, 5, 6, 7, 255] = 255) -> bool
 import time
 from pyAgxArm import create_agx_arm_config, AgxArmFactory
 
-cfg = create_agx_arm_config(robot="nero", channel="can0")
+cfg = create_agx_arm_config(robot="nero", comm="can", channel="can0")
 robot = AgxArmFactory.create_arm(cfg)
 robot.connect()
 
@@ -767,7 +811,7 @@ disable(self, joint_index: Literal[1, 2, 3, 4, 5, 6, 7, 255] = 255) -> bool
 import time
 from pyAgxArm import create_agx_arm_config, AgxArmFactory
 
-cfg = create_agx_arm_config(robot="nero", channel="can0")
+cfg = create_agx_arm_config(robot="nero", comm="can", channel="can0")
 robot = AgxArmFactory.create_arm(cfg)
 robot.connect()
 
@@ -793,7 +837,7 @@ reset(self) -> None
 ```python
 from pyAgxArm import create_agx_arm_config, AgxArmFactory
 
-cfg = create_agx_arm_config(robot="nero", channel="can0")
+cfg = create_agx_arm_config(robot="nero", comm="can", channel="can0")
 robot = AgxArmFactory.create_arm(cfg)
 robot.connect()
 
@@ -817,7 +861,7 @@ electronic_emergency_stop(self) -> None
 ```python
 from pyAgxArm import create_agx_arm_config, AgxArmFactory
 
-cfg = create_agx_arm_config(robot="nero", channel="can0")
+cfg = create_agx_arm_config(robot="nero", comm="can", channel="can0")
 robot = AgxArmFactory.create_arm(cfg)
 robot.connect()
 
@@ -841,7 +885,7 @@ set_normal_mode(self) -> None
 ```python
 from pyAgxArm import create_agx_arm_config, AgxArmFactory
 
-cfg = create_agx_arm_config(robot="nero", channel="can0")
+cfg = create_agx_arm_config(robot="nero", comm="can", channel="can0")
 robot = AgxArmFactory.create_arm(cfg)
 robot.connect()
 
@@ -872,7 +916,7 @@ move_j(self, joints: list[float]) -> None
 import time
 from pyAgxArm import create_agx_arm_config, AgxArmFactory
 
-cfg = create_agx_arm_config(robot="nero", channel="can0")
+cfg = create_agx_arm_config(robot="nero", comm="can", channel="can0")
 robot = AgxArmFactory.create_arm(cfg)
 robot.connect()
 
@@ -924,7 +968,7 @@ move_p(self, pose: list[float]) -> None
 import time
 from pyAgxArm import create_agx_arm_config, AgxArmFactory
 
-cfg = create_agx_arm_config(robot="nero", channel="can0")
+cfg = create_agx_arm_config(robot="nero", comm="can", channel="can0")
 robot = AgxArmFactory.create_arm(cfg)
 robot.connect()
 

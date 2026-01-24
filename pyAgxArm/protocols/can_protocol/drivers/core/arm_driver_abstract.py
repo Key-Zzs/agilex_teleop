@@ -1,5 +1,5 @@
 import threading
-from typing import Optional, TYPE_CHECKING, overload, List, Sequence
+from typing import Optional, TYPE_CHECKING, overload, List
 
 from typing_extensions import Literal, Final
 from .arm_driver_interface import ArmDriverInterface
@@ -52,7 +52,11 @@ class ArmDriverAbstract(ArmDriverInterface):
         self._effector = None
         self._parser = self._Parser(self._ctx.fps)
         self._arm_ctx = ArmDriverContext(config, self._ctx, self._parser)
+
+        # TCP
         self._tcp_offset_pose: List[float] = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+        self._T_f_t = None
+        self._T_t_f = None
 
     def _send_msg(self, msg: AttributeBase) -> None:
         """Send one control message.
@@ -218,7 +222,7 @@ class ArmDriverAbstract(ArmDriverInterface):
 
     # -------------------------- TCP --------------------------
 
-    def set_tcp_offset(self, pose: Sequence[float]):
+    def set_tcp_offset(self, pose: List[float]):
         """Set TCP offset pose in the flange frame.
 
         Parameters
@@ -233,6 +237,12 @@ class ArmDriverAbstract(ArmDriverInterface):
         self._tcp_offset_pose = validate_pose6(
             pose, name="set_tcp_offset", validate_angle_limits=True
         )
+        if all(x == 0.0 for x in self._tcp_offset_pose):
+            self._T_f_t = None
+            self._T_t_f = None
+        else:
+            self._T_f_t = pose6_to_T(self._tcp_offset_pose)
+            self._T_t_f = inv_T(self._T_f_t)
 
     def get_tcp_pose(self):
         """Get TCP pose by applying the configured TCP offset to the flange pose.
@@ -245,22 +255,51 @@ class ArmDriverAbstract(ArmDriverInterface):
         flange: Optional[MessageAbstract] = self.get_flange_pose()
         if flange is None:
             return None
-        flange_pose = validate_pose6(
-            flange.msg, name="flange_pose", validate_angle_limits=False
-        )
-        T_w_f = pose6_to_T(flange_pose)
-        T_f_t = pose6_to_T(self._tcp_offset_pose)
-        T_w_t = matmul4(T_w_f, T_f_t)
-        tcp_pose = T_to_pose6(T_w_t)
-        ret = MessageAbstract(
+        
+        return MessageAbstract(
             msg_type="tcp_pose",
-            msg=tcp_pose,
+            msg=self.get_flange2tcp_pose(flange.msg),
             timestamp=flange.timestamp,
             hz=flange.hz,
         )
-        return ret
 
-    def get_tcp2flange_pose(self, tcp_pose: Sequence[float]):
+    def get_flange2tcp_pose(self, flange_pose: List[float]):
+        """Convert a flange pose (base frame) to the corresponding TCP pose.
+
+        Parameters
+        ----------
+        `flange_pose`: `[x, y, z, roll, pitch, yaw]`
+        - `x, y, z`: meters.
+        - `roll, pitch, yaw`: radians (Euler angles around `X/Y/Z`).
+          - `roll`, `yaw` must be within `[-pi, pi]`
+          - `pitch` must be within `[-pi/2, pi/2]`
+
+        Returns
+        -------
+        `tcp_pose`: `[x, y, z, roll, pitch, yaw]`
+        - `x, y, z`: meters.
+        - `roll, pitch, yaw`: radians (Euler angles around `X/Y/Z`).
+          - `roll`, `yaw` must be within `[-pi, pi]`
+          - `pitch` must be within `[-pi/2, pi/2]`
+
+        Examples
+        --------
+        >>> robot.set_tcp_offset([0, 0, 0.1, 0, 0, 0])
+        >>> flange_pose = robot.get_flange_pose()
+        >>> if flange_pose:
+        >>>     print(robot.get_flange2tcp_pose(flange_pose.msg))
+        """
+        flange_pose = validate_pose6(
+            flange_pose, name="flange2tcp_pose", validate_angle_limits=True
+        )
+        if self._T_f_t is None:
+            return flange_pose
+        
+        T_w_f = pose6_to_T(flange_pose)
+        T_w_t = matmul4(T_w_f, self._T_f_t)
+        return T_to_pose6(T_w_t)
+
+    def get_tcp2flange_pose(self, tcp_pose: List[float]):
         """Convert a target TCP pose (base frame) to the corresponding flange pose.
 
         Notes
@@ -275,8 +314,9 @@ class ArmDriverAbstract(ArmDriverInterface):
         tcp_pose = validate_pose6(
             tcp_pose, name="tcp2flange_pose", validate_angle_limits=True
         )
+        if self._T_t_f is None:
+            return tcp_pose
+        
         T_w_t = pose6_to_T(tcp_pose)
-        T_f_t = pose6_to_T(self._tcp_offset_pose)
-        T_t_f = inv_T(T_f_t)
-        T_w_f = matmul4(T_w_t, T_t_f)
+        T_w_f = matmul4(T_w_t, self._T_t_f)
         return T_to_pose6(T_w_f)
