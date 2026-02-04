@@ -99,11 +99,11 @@ robot = AgxArmFactory.create_arm(cfg)
 # Create a Communication Instance and Start the Reading Thread
 robot.connect()
 while True:
-    js = robot.get_joint_states()
+    ja = robot.get_joint_angles()
     # If the feedback value is not None — note that the feedback value will be None initially when the program starts, as no data has been received yet.
-    if js is not None:
-        print(js.msg) # list
-        print(js.hz, js.timestamp)
+    if ja is not None:
+        print(ja.msg) # list
+        print(ja.hz, ja.timestamp)
     time.sleep(0.005)# 200hz
 ```
 

@@ -96,11 +96,11 @@ robot = AgxArmFactory.create_arm(cfg)
 # 创建通讯实例并打开读取线程
 robot.connect()
 while True:
-    js = robot.get_joint_states()
+    ja = robot.get_joint_angles()
     # 如果反馈数值不为None，因为刚运行程序时没有接收到数据，反馈值为None
-    if js is not None:
-        print(js.msg) # list
-        print(js.hz, js.timestamp)
+    if ja is not None:
+        print(ja.msg) # list
+        print(ja.hz, ja.timestamp)
     time.sleep(0.005)# 200hz
 ```
 

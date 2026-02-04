@@ -276,16 +276,16 @@ while True:
     time.sleep(0.02)
 ```
 
-### 读取机械臂关节消息 get_joint_states()
+### 读取机械臂关节角度消息 get_joint_angles()
 
 - 功能说明:
 
-获取关节角消息
+获取关节角度消息
 
 - 定义:
 
 ```python
-get_joint_states(self) -> MessageAbstract[list[float]] | None
+get_joint_angles(self) -> MessageAbstract[list[float]] | None
 ```
 
 - 返回值:
@@ -305,10 +305,10 @@ robot = AgxArmFactory.create_arm(cfg)
 robot.connect()
 
 while True:
-    js = robot.get_joint_states()
-    if js is not None:
-        print(js.msg) # list
-        print(js.hz, js.timestamp)
+    ja = robot.get_joint_angles()
+    if ja is not None:
+        print(ja.msg) # list
+        print(ja.hz, ja.timestamp)
     time.sleep(0.005)
 ```
 

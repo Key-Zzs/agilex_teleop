@@ -337,16 +337,16 @@ while True:
     time.sleep(0.02)
 ```
 
-### 读取机械臂关节消息 get_joint_states()
+### 读取机械臂关节角度消息 get_joint_angles()
 
 - 功能说明:
 
-获取关节角消息
+获取关节角度消息
 
 - 定义:
 
 ```python
-get_joint_states(self) -> MessageAbstract[list[float]] | None
+get_joint_angles(self) -> MessageAbstract[list[float]] | None
 ```
 
 - 返回值:
@@ -366,10 +366,10 @@ robot = AgxArmFactory.create_arm(cfg)
 robot.connect()
 
 while True:
-    js = robot.get_joint_states()
-    if js is not None:
-        print(js.msg) # list
-        print(js.hz, js.timestamp)
+    ja = robot.get_joint_angles()
+    if ja is not None:
+        print(ja.msg) # list
+        print(ja.hz, ja.timestamp)
     time.sleep(0.005)
 ```
 
@@ -1036,16 +1036,16 @@ robot.move_master_to_home()
 robot.restore_master_drag_mode()
 ```
 
-### 读取机械臂关节控制消息 get_joint_ctrl_states()
+### 读取主臂关节角度消息 get_master_joint_angles()
 
 - 功能说明:
 
-获取机械臂控制帧消息，用于获取主臂给从臂发送的控制帧
+获取主臂关节角度消息，用于控制从臂
 
 - 定义:
 
 ```python
-get_joint_ctrl_states(self) -> MessageAbstract[list[float]] | None
+get_master_joint_angles(self) -> MessageAbstract[list[float]] | None
 ```
 
 - 返回值:
@@ -1065,10 +1065,10 @@ robot = AgxArmFactory.create_arm(cfg)
 robot.connect()
 
 while True:
-    jc = robot.get_joint_ctrl_states()
-    if jc is not None:
-        print(jc.msg) # list
-        print(jc.hz, jc.timestamp)
+    mja = robot.get_master_joint_angles()
+    if mja is not None:
+        print(mja.msg) # list
+        print(mja.hz, mja.timestamp)
     time.sleep(0.005)
 ```
 
@@ -1505,7 +1505,7 @@ move_mit(
 |v_des|float|目标速度，数值范围[-45.0, 45.0]，单位：弧度/秒，默认值0.0，数值精度：2.197802197802198e-2|
 |kp|float|位置增益，数值范围[0.0, 500.0]，默认值10.0，数值精度：1.221001221001221e-1|
 |kd|float|速度增益，数值范围[-5.0, 5.0]，默认值0.8。数值精度：2.442002442002442e-3|
-|t_ff|float|前馈扭矩，数值范围[-18.0, 18.0]，单位N·m，默认值0.0，数值精度：6.274509803921569e-2|
+|t_ff|float|前馈扭矩，数值范围[-8.0, 8.0]，单位N·m，默认值0.0，数值精度：6.274509803921569e-2|
 
 - 使用示例:
 

@@ -177,7 +177,7 @@ def display_table(refresh_interval):
             if robot_status is None:
                 continue
 
-            joint = robot.get_joint_states()
+            joint = robot.get_joint_angles()
             if joint is None:
                 continue
 

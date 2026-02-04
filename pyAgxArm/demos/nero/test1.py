@@ -77,7 +77,7 @@ while True:
 
     # print(robot.get_arm_status())
 
-    # print(robot.get_joint_states())
+    # print(robot.get_joint_angles())
     # print(robot.get_flange_pose())
 
     # print(robot.get_driver_states(1))

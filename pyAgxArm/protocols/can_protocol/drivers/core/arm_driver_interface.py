@@ -39,7 +39,7 @@ class ArmDriverInterface(ABC):
         ...
 
     @abstractmethod
-    def get_joint_states(self):
+    def get_joint_angles(self):
         ...
 
     @abstractmethod

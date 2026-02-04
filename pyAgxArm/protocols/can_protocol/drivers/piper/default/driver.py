@@ -168,10 +168,9 @@ class Driver(ArmDriverAbstract):
 
     def _deal_move_p_msgs(self, pose: List[float]):
         """Get pose control messages."""
-        Validator.validate_pose6(
+        pose = Validator.clamp_pose6(
             pose,
-            name="flange_pose",
-            validate_angle_limits=True
+            name="flange_pose"
         )
 
         # Radians to degrees conversion
@@ -201,7 +200,6 @@ class Driver(ArmDriverAbstract):
         joints = Validator.clamp_joints(
             joints,
             length=self._JOINT_NUMS,
-            name="joints",
             joints_limit=list(
                 self._config.get(
                     "joint_limits", {}
@@ -334,61 +332,55 @@ class Driver(ArmDriverAbstract):
 
     # -------------------------- Get --------------------------
 
-    def get_joint_states(self):
-        """Get current joint states feedback.
+    def get_joint_angles(self):
+        """Get current joint angles feedback.
 
         Returns
         -------
         MessageAbstract[list[float]] | None
-            The joint states feedback.
-            If the joint states is not available, return None.
+            The joint angles feedback.
+            If the joint angles are not available, return None.
 
         Message
         -------
-        `list[float]`: joint states, unit: rad
+        `list[float]`: joint angles, unit: rad
 
         Examples
         --------
-        >>> js = robot.get_joint_states()
-        >>> if js is not None:
-        >>>     print(js.msg)
-        >>>     print(js.hz, js.timestamp)
+        >>> ja = robot.get_joint_angles()
+        >>> if ja is not None:
+        >>>     print(ja.msg)
+        >>>     print(ja.hz, ja.timestamp)
         """
-        joint_states: Optional[
+        joint_angles: Optional[
             MessageAbstract[ArmMsgFeedbackJointStates]
         ] = None
-        if getattr(self, "_joint_states", None) is None:
-            self._joint_states = MessageAbstract(
+        if getattr(self, "_joint_angles", None) is None:
+            self._joint_angles = MessageAbstract(
                 msg=list([0.0] * self._JOINT_NUMS),
                 msg_type=ArmMsgFeedbackJointStates.type_,
             )
         if getattr(self._parser, "joint_12", None) is not None:
-            joint_states = self._parser.joint_12
-            self._joint_states.msg[0] = joint_states.msg.joint_1
-            self._joint_states.msg[1] = joint_states.msg.joint_2
+            joint_angles = self._parser.joint_12
+            self._joint_angles.msg[0] = joint_angles.msg.joint_1
+            self._joint_angles.msg[1] = joint_angles.msg.joint_2
         if getattr(self._parser, "joint_34", None) is not None:
-            joint_states = self._parser.joint_34
-            self._joint_states.msg[2] = joint_states.msg.joint_3
-            self._joint_states.msg[3] = joint_states.msg.joint_4
+            joint_angles = self._parser.joint_34
+            self._joint_angles.msg[2] = joint_angles.msg.joint_3
+            self._joint_angles.msg[3] = joint_angles.msg.joint_4
         if getattr(self._parser, "joint_56", None) is not None:
-            joint_states = self._parser.joint_56
-            self._joint_states.msg[4] = joint_states.msg.joint_5
-            self._joint_states.msg[5] = joint_states.msg.joint_6
-        if joint_states is not None:
-            self._joint_states.timestamp = joint_states.timestamp
-            self._joint_states.hz = self._ctx.fps.get_fps(
-                joint_states.msg_type)
+            joint_angles = self._parser.joint_56
+            self._joint_angles.msg[4] = joint_angles.msg.joint_5
+            self._joint_angles.msg[5] = joint_angles.msg.joint_6
+        if joint_angles is not None:
+            self._joint_angles.timestamp = joint_angles.timestamp
+            self._joint_angles.hz = self._ctx.fps.get_fps(
+                joint_angles.msg_type)
             if Validator.is_joints(
-                self._joint_states.msg,
-                length=self._JOINT_NUMS,
-                name="joint_states",
+                self._joint_angles.msg,
+                length=self._JOINT_NUMS
             ):
-                return self._joint_states
-            else:
-                print(
-                    "Warning: Invalid joint states received: "
-                    f"{self._joint_states.msg}"
-                )
+                return self._joint_angles
         return None
 
     def get_flange_pose(self):
@@ -449,15 +441,9 @@ class Driver(ArmDriverAbstract):
             self._end_pose.hz = self._ctx.fps.get_fps(end_pose.msg_type)
             if Validator.is_pose6(
                 self._end_pose.msg,
-                name="flange_pose",
-                validate_angle_limits=True
+                name="flange_pose"
             ):
                 return self._end_pose
-            else:
-                print(
-                    "Warning: Invalid end pose received: "
-                    f"{self._end_pose.msg}"
-                )
         return None
 
     def get_arm_status(self):
@@ -1230,7 +1216,7 @@ class Driver(ArmDriverAbstract):
             (Numerical precision: 2.442002442002442e-3)
 
         `t_ff`: float, optional
-        - Feed-forward torque reference (unit: N·m). Range: [-18.0, 18.0].
+        - Feed-forward torque reference (unit: N·m). Range: [-8.0, 8.0].
           Default is
             0.0. (Numerical precision: 6.274509803921569e-2 N·m)
 
@@ -1280,22 +1266,27 @@ class Driver(ArmDriverAbstract):
                 "Proportional gain should be between 0.0 and 500.0")
         if kd < -5.0 or kd > 5.0:
             raise ValueError("Derivative gain should be between -5.0 and 5.0")
-        if t_ff < -18.0 or t_ff > 18.0:
+        if t_ff < -8.0 or t_ff > 8.0:
             raise ValueError(
-                "Torque reference should be between -18.0 and 18.0")
+                "Torque reference should be between -8.0 and 8.0")
 
-        limit = self._config.get(
+        limits = self._config.get(
             "joint_limits", {}
         ).get(f"joint{joint_index}", None)
 
-        if limit is not None:
-            p_des = Validator.clamp(p_des, limit[0], limit[1])
+        if limits is not None:
+            lower_limit = limits[0]
+            upper_limit = limits[1]
         else:
-            p_des = Validator.clamp(
-                p_des,
-                -Validator.REF_MAX_ANGLE,
-                Validator.REF_MAX_ANGLE,
+            lower_limit = -Validator.REF_MAX_ANGLE
+            upper_limit = Validator.REF_MAX_ANGLE
+        
+        if not Validator.is_within_limit(p_des, lower_limit, upper_limit):
+            print(
+                f"Warning: Desired position {p_des} rad is outside "
+                f"joint {joint_index} limits [{lower_limit}, {upper_limit}] rad. "
             )
+            p_des = Validator.clamp(p_des, lower_limit, upper_limit)
 
         p_des = nc.FloatToUint(p_des, -12.5, 12.5, 16)
         v_des = nc.FloatToUint(v_des, -45.0, 45.0, 12)
@@ -1365,55 +1356,56 @@ class Driver(ArmDriverAbstract):
         msg = ArmMsgMasterArmMoveToHome(mode=0)
         self._send_msg(msg)
 
-    def get_joint_ctrl_states(self):
-        """Get the joint control states.
+    def get_master_joint_angles(self):
+        """Get the master arm joint angles,
+        can be used to control the slave arm.
 
         Returns
         -------
         MessageAbstract[list[float]] | None
-            The joint control states.
-            If the joint control states is not available, return None.
+            The joint angles feedback of the master arm.
+            If the joint angles are not available, return None.
 
         Message
         -------
-        `list[float]`: joint control states, unit: rad
+        `list[float]`: joint angles, unit: rad
 
         Examples
         --------
-        >>> jcs = robot.get_joint_ctrl_states()
-        >>> if jcs is not None:
-        >>>     print(jcs.msg)
-        >>>     print(jcs.hz, jcs.timestamp)
+        >>> mja = robot.get_master_joint_angles()
+        >>> if mja is not None:
+        >>>     print(mja.msg)
+        >>>     print(mja.hz, mja.timestamp)
         """
-        joint_ctrl_states: Optional[MessageAbstract[ArmMsgJointCtrl]] = None
-        if getattr(self, "_joint_ctrl_states", None) is None:
-            self._joint_ctrl_states = MessageAbstract(
+        master_joint_angles: Optional[MessageAbstract[ArmMsgJointCtrl]] = None
+        if getattr(self, "_master_joint_angles", None) is None:
+            self._master_joint_angles = MessageAbstract(
                 msg=list([0.0] * self._JOINT_NUMS),
                 msg_type=ArmMsgJointCtrl.type_,
             )
         if getattr(self._parser, "joint_ctrl_feedback_12", None) is not None:
-            joint_ctrl_states = self._parser.joint_ctrl_feedback_12
-            self._joint_ctrl_states.msg[0] = joint_ctrl_states.msg.joint_1
-            self._joint_ctrl_states.msg[1] = joint_ctrl_states.msg.joint_2
+            master_joint_angles = self._parser.joint_ctrl_feedback_12
+            self._master_joint_angles.msg[0] = master_joint_angles.msg.joint_1
+            self._master_joint_angles.msg[1] = master_joint_angles.msg.joint_2
         if getattr(self._parser, "joint_ctrl_feedback_34", None) is not None:
-            joint_ctrl_states = self._parser.joint_ctrl_feedback_34
-            self._joint_ctrl_states.msg[2] = joint_ctrl_states.msg.joint_3
-            self._joint_ctrl_states.msg[3] = joint_ctrl_states.msg.joint_4
+            master_joint_angles = self._parser.joint_ctrl_feedback_34
+            self._master_joint_angles.msg[2] = master_joint_angles.msg.joint_3
+            self._master_joint_angles.msg[3] = master_joint_angles.msg.joint_4
         if getattr(self._parser, "joint_ctrl_feedback_56", None) is not None:
-            joint_ctrl_states = self._parser.joint_ctrl_feedback_56
-            self._joint_ctrl_states.msg[4] = joint_ctrl_states.msg.joint_5
-            self._joint_ctrl_states.msg[5] = joint_ctrl_states.msg.joint_6
-        if getattr(self._parser, "joint_ctrl_feedback_7", None) is not None:
-            joint_ctrl_states = self._parser.joint_ctrl_feedback_7
-            self._joint_ctrl_states.msg[6] = joint_ctrl_states.msg.joint_7
-        if joint_ctrl_states is not None:
-            self._joint_ctrl_states.timestamp = joint_ctrl_states.timestamp
-            self._joint_ctrl_states.hz = self._ctx.fps.get_fps(
-                joint_ctrl_states.msg_type
+            master_joint_angles = self._parser.joint_ctrl_feedback_56
+            self._master_joint_angles.msg[4] = master_joint_angles.msg.joint_5
+            self._master_joint_angles.msg[5] = master_joint_angles.msg.joint_6
+        if master_joint_angles is not None:
+            self._master_joint_angles.timestamp = master_joint_angles.timestamp
+            self._master_joint_angles.hz = self._ctx.fps.get_fps(
+                master_joint_angles.msg_type
             )
-            return self._joint_ctrl_states
-        else:
-            return None
+            if Validator.is_joints(
+                self._master_joint_angles.msg,
+                length=self._JOINT_NUMS
+            ):
+                return self._master_joint_angles
+        return None
 
     # -------------------------- Other --------------------------
 
