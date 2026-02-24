@@ -1228,6 +1228,7 @@ class Driver(ArmDriverAbstract):
                 f"Warning: Feed-forward torque {t_ff} N·m is outside "
                 f"joint {joint_index} limits [-8.0, 8.0]. "
             )
+            t_ff = Validator.clamp(t_ff, -8.0, 8.0)
 
         p_des = nc.FloatToUint(p_des, -12.5, 12.5, 16)
         v_des = nc.FloatToUint(v_des, -45.0, 45.0, 12)
