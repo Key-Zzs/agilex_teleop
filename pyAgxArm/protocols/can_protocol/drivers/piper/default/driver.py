@@ -1325,16 +1325,16 @@ class Driver(ArmDriverAbstract):
                 msg=list([0.0] * self._JOINT_NUMS),
                 msg_type=ArmMsgJointCtrl.type_,
             )
-        if getattr(self._parser, "joint_ctrl_feedback_12", None) is not None:
-            master_joint_angles = self._parser.joint_ctrl_feedback_12
+        if getattr(self._parser, "master_joint_12", None) is not None:
+            master_joint_angles = self._parser.master_joint_12
             self._master_joint_angles.msg[0] = master_joint_angles.msg.joint_1
             self._master_joint_angles.msg[1] = master_joint_angles.msg.joint_2
-        if getattr(self._parser, "joint_ctrl_feedback_34", None) is not None:
-            master_joint_angles = self._parser.joint_ctrl_feedback_34
+        if getattr(self._parser, "master_joint_34", None) is not None:
+            master_joint_angles = self._parser.master_joint_34
             self._master_joint_angles.msg[2] = master_joint_angles.msg.joint_3
             self._master_joint_angles.msg[3] = master_joint_angles.msg.joint_4
-        if getattr(self._parser, "joint_ctrl_feedback_56", None) is not None:
-            master_joint_angles = self._parser.joint_ctrl_feedback_56
+        if getattr(self._parser, "master_joint_56", None) is not None:
+            master_joint_angles = self._parser.master_joint_56
             self._master_joint_angles.msg[4] = master_joint_angles.msg.joint_5
             self._master_joint_angles.msg[5] = master_joint_angles.msg.joint_6
         if master_joint_angles is not None:

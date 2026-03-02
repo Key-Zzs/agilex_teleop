@@ -619,9 +619,9 @@ class Parser(TableDriven, ProtocolParserInterface):
 
         firmware_info: Optional[MessageAbstract[ArmMsgFeedbackFirmware]]
 
-        joint_ctrl_feedback_12: Optional[MessageAbstract[ArmMsgJointCtrl12]]
-        joint_ctrl_feedback_34: Optional[MessageAbstract[ArmMsgJointCtrl34]]
-        joint_ctrl_feedback_56: Optional[MessageAbstract[ArmMsgJointCtrl56]]
+        master_joint_12: Optional[MessageAbstract[ArmMsgJointCtrl12]]
+        master_joint_34: Optional[MessageAbstract[ArmMsgJointCtrl34]]
+        master_joint_56: Optional[MessageAbstract[ArmMsgJointCtrl56]]
 
     def __init__(self, fps_manager: FPSManager, codec: Optional[Codec] = None):
         super().__init__(fps_manager=fps_manager)
@@ -701,17 +701,17 @@ class Parser(TableDriven, ProtocolParserInterface):
         # 接收侧：can_id -> (attr_name, msg_cls, decoder)
         return {
             0x155: (
-                "joint_ctrl_feedback_12",
+                "master_joint_12",
                 ArmMsgJointCtrl12,
                 self._codec.decode_155_joint_ctrl_12
             ),
             0x156: (
-                "joint_ctrl_feedback_34",
+                "master_joint_34",
                 ArmMsgJointCtrl34,
                 self._codec.decode_156_joint_ctrl_34
             ),
             0x157: (
-                "joint_ctrl_feedback_56",
+                "master_joint_56",
                 ArmMsgJointCtrl56,
                 self._codec.decode_157_joint_ctrl_56
             ),
