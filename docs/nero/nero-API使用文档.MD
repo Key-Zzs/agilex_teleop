@@ -740,6 +740,88 @@ print("target_flange_pose =", target_flange_pose)
 # robot.move_p(target_flange_pose)  # 注意：会触发运动
 ```
 
+## 主从臂相关
+
+### 设定机械臂为正常模式 set_normal_mode()
+
+- 功能说明:
+
+将机械臂设置为正常控制模式（单臂模式）。常用于从主从/联动模式切回普通模式，同时会开启CAN推送。
+
+- 定义:
+
+```python
+set_normal_mode(self) -> None
+```
+
+- 使用示例:
+
+```python
+from pyAgxArm import create_agx_arm_config, AgxArmFactory
+
+cfg = create_agx_arm_config(robot="nero", comm="can", channel="can0")
+robot = AgxArmFactory.create_arm(cfg)
+robot.connect()
+
+robot.set_normal_mode()
+```
+
+### 设定机械臂为主臂模式 set_master_mode()
+
+- 功能说明:
+
+将机械臂设置为**主臂零力拖动模式**（主从协同场景下的“主臂”）。
+
+该模式用于**主从臂联动/示教**等场景；若当前仅使用单臂，可忽略该接口。
+
+进入该模式后，主臂通常处于可拖动/零力拖动状态；从臂的受控状态需通过 `set_slave_mode()` 配置。
+
+- 定义:
+
+```python
+set_master_mode(self) -> None
+```
+
+- 使用示例:
+
+```python
+from pyAgxArm import create_agx_arm_config, AgxArmFactory
+
+cfg = create_agx_arm_config(robot="nero", comm="can", channel="can0")
+robot = AgxArmFactory.create_arm(cfg)
+robot.connect()
+
+robot.set_master_mode()
+```
+
+### 设定机械臂为从臂模式 set_slave_mode()
+
+- 功能说明:
+
+将机械臂设置为**从臂受控模式**（主从协同场景下的“从臂”）。
+
+该模式可用于主从臂联动：从臂跟随主臂控制/指令运行。
+
+可与 `set_master_mode()` 配套使用。
+
+- 定义:
+
+```python
+set_slave_mode(self) -> None
+```
+
+- 使用示例:
+
+```python
+from pyAgxArm import create_agx_arm_config, AgxArmFactory
+
+cfg = create_agx_arm_config(robot="nero", comm="can", channel="can0")
+robot = AgxArmFactory.create_arm(cfg)
+robot.connect()
+
+robot.set_slave_mode()
+```
+
 ## 机械臂控制相关
 
 ### 使能机械臂 enable()
@@ -866,30 +948,6 @@ robot = AgxArmFactory.create_arm(cfg)
 robot.connect()
 
 robot.electronic_emergency_stop()
-```
-
-### 切换为正常模式 set_normal_mode()
-
-- 功能说明:
-
-将机械臂设置为正常控制模式（单臂模式）。常用于从主从/联动模式切回普通模式。
-
-- 定义:
-
-```python
-set_normal_mode(self) -> None
-```
-
-- 使用示例:
-
-```python
-from pyAgxArm import create_agx_arm_config, AgxArmFactory
-
-cfg = create_agx_arm_config(robot="nero", comm="can", channel="can0")
-robot = AgxArmFactory.create_arm(cfg)
-robot.connect()
-
-robot.set_normal_mode()
 ```
 
 ### 关节运动 move_j()

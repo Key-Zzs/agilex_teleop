@@ -927,7 +927,7 @@ print("target_flange_pose =", target_flange_pose)
 
 ## 主从臂相关
 
-### 设定机械臂为主臂 set_master_mode()
+### 设定机械臂为主臂模式 set_master_mode()
 
 - 功能说明:
 
@@ -955,7 +955,7 @@ robot.connect()
 robot.set_master_mode()
 ```
 
-### 设定机械臂为从臂 set_slave_mode()
+### 设定机械臂为从臂模式 set_slave_mode()
 
 - 功能说明:
 
