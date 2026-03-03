@@ -66,11 +66,11 @@ class PiperDefaultDriverAPIProtoAdapter(DriverAPIProtoAdapter):
         return cls._INSTALL_POS_CODE[value]
 
     @classmethod
-    def motion_mode(cls, value: str) -> tuple[int, int]:
+    def motion_mode(cls, value: str) -> Tuple[int, int]:
         return cls._MOVE_CODE[value]
     
     @classmethod
-    def mit_mode(cls, value: str) -> tuple[int, int]:
+    def mit_mode(cls, value: str) -> Tuple[int, int]:
         return cls._MIT_CODE.get(value, ArmMsgModeCtrl.Enums.MitMode.POS_VEL)
 
     @classmethod

@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 # -*-coding:utf8-*-
-from typing_extensions import Literal, Union
+from typing import Union
+from typing_extensions import Literal
 
 from .....core.attritube_base import AttributeBase
 
