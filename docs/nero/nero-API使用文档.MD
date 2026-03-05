@@ -551,19 +551,25 @@ robot.set_speed_percent(100)
 
 - 功能说明:
 
-设置运动模式（`move_p` 或 `move_j`）。该接口会下发模式设置到控制器。
+设置运动模式（`move_p/move_j/move_l/move_c/move_mit/move_js`）。该接口会下发模式设置指令到控制器。
+
+`move_p/move_j/move_l/move_c`为**位置速度模式**，底层会对接收到消息进行平滑处理，以保证运动连续稳定。
+
+`move_mit/move_js`为**MIT电机透传模式**，底层仅负责消息转发，**不进行任何平滑处理**，适用于需要直接控制电机的场景。
+
+调用上述任一 `move_*` 运动指令时，系统**会自动切换至对应的运动模式**，因此**无需手动调用`set_motion_mode()`** 进行模式设置。
 
 - 定义:
 
 ```python
-set_motion_mode(self, motion_mode: Literal["p", "j"] = "p") -> None
+set_motion_mode(self, motion_mode: Literal["p", "j", "l", "c", "mit", "js"] = "p") -> None
 ```
 
 - 参数说明:
 
 |名称|类型|说明|
 |---|---|---|
-|motion_mode|str|运动模式：`"p"` 末端模式；`"j"` 关节模式（建议使用 `robot.OPTIONS.MOTION_MODE.xxx` 常量）|
+|motion_mode|str|运动模式：`p/j/l/c/mit/js`（建议使用 `robot.OPTIONS.MOTION_MODE.xxx` 常量）|
 
 - 使用示例:
 
