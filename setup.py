@@ -8,14 +8,14 @@ setup(
     name='pyAgxArm',
     version='1.0.0',
     setup_requires=['setuptools>=40.0'],
-    # long_description=open(os.path.join(here, 'DESCRIPTION.MD'), encoding='utf-8').read(),
+    # long_description=open(os.path.join(here, 'DESCRIPTION.md'), encoding='utf-8').read(),
     # long_description_content_type='text/markdown',
     url='https://github.com/agilexrobotics/pyAgxArm',
     license='MIT License',
     packages=find_packages(include=['pyAgxArm', 'pyAgxArm.*']),
     include_package_data=True,
     package_data={
-        '': ['LICENSE', '*.sh', '*.MD'],
+        '': ['LICENSE', '*.sh', '*.md'],
     },
     install_requires=[
         'python-can>=3.3.4',
@@ -34,6 +34,6 @@ setup(
     python_requires='>=3.6',
     # project_urls={
     #     'Repository': 'https://github.com/agilexrobotics/pyAgxArm',
-    #     'ChangeLog': 'https://github.com/agilexrobotics/pyAgxArm/blob/master/CHANGELOG.MD',
+    #     'ChangeLog': 'https://github.com/agilexrobotics/pyAgxArm/blob/master/CHANGELOG.md',
     # },
 )

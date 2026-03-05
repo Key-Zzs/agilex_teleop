@@ -1,7 +1,7 @@
 include LICENSE
 include *.sh
-include *.MD
-include pyAgxArm/*.MD
+include *.md
+include pyAgxArm/*.md
 include pyAgxArm/*.sh
 include pyAgxArm/LICENSE
 

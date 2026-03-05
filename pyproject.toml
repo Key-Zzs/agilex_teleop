@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 name = "pyAgxArm"
 version = "1.0.0"
 description = "A SDK to control Agilex arms"
-readme = { file = "README.MD", content-type = "text/markdown" }
+readme = { file = "README.md", content-type = "text/markdown" }
 authors = [
     { name = "Rosen Yin", email = "yinruocheng321@gmail.com" }
 ]
@@ -25,7 +25,7 @@ classifiers = [
 [project.urls]
 Homepage = "https://github.com/agilexrobotics/pyAgxArm"
 Repository = "https://github.com/agilexrobotics/pyAgxArm"
-ChangeLog = "https://github.com/agilexrobotics/pyAgxArm/blob/master/CHANGELOG.MD"
+ChangeLog = "https://github.com/agilexrobotics/pyAgxArm/blob/master/CHANGELOG.md"
 
 [tool.setuptools.packages.find]
 include = [
