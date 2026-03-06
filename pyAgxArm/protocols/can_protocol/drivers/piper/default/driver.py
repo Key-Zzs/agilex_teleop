@@ -30,8 +30,8 @@ from ....msgs.piper.default import (
     ArmMsgEndVelAccParamConfig,
     ArmMsgCrashProtectionRatingConfig,
     ArmMsgMotionCtrl,
-    ArmMsgMasterArmMoveToHome,
-    ArmMsgMasterSlaveModeConfig,
+    ArmMsgLeaderArmMoveToHome,
+    ArmMsgLeaderFollowerModeConfig,
     ArmMsgJointCtrl,
 )
 
@@ -569,9 +569,9 @@ class Driver(ArmDriverAbstract):
 
         Message
         -------
-        `pos`: Current motor position, unit: rad
+        `position`: Current motor position, unit: rad
 
-        `motor_speed`: Current motor speed, unit: rad/s
+        `velocity`: Current motor speed, unit: rad/s
 
         `current`: Current motor current, unit: A
 
@@ -581,7 +581,7 @@ class Driver(ArmDriverAbstract):
         --------
         >>> ms = robot.get_motor_states(1)
         >>> if ms is not None:
-        >>>     print(ms.msg.pos, ms.msg.motor_speed, ms.msg.torque)
+        >>>     print(ms.msg.position, ms.msg.velocity, ms.msg.torque)
         >>>     print(ms.hz, ms.timestamp)
         """
         if joint_index not in self._JOINT_INDEX_LIST[:-1]:
@@ -1249,16 +1249,16 @@ class Driver(ArmDriverAbstract):
         self.set_motion_mode('mit')
         self._send_msg(msg)
 
-    # -------------------------- Master-Slave --------------------------
+    # -------------------------- Leader-Follower --------------------------
 
-    def _set_master_slave_config(
+    def _set_leader_follower_config(
         self,
         linkage_config: Literal[0x00, 0xFA, 0xFC] = 0x00,
         feedback_offset: Literal[0x00, 0x10, 0x20] = 0x00,
         ctrl_offset: Literal[0x00, 0x10, 0x20] = 0x00,
         linkage_offset: Literal[0x00, 0x10, 0x20] = 0x00,
     ):
-        """Set the master-slave configuration."""
+        """Set the leader-follower configuration."""
         if linkage_config not in [0x00, 0xFA, 0xFC]:
             raise ValueError("Linkage config should be 0x00, 0xFA, 0xFC")
         if feedback_offset not in [0x00, 0x10, 0x20]:
@@ -1267,45 +1267,45 @@ class Driver(ArmDriverAbstract):
             raise ValueError("Ctrl offset should be 0x00, 0x10, 0x20")
         if linkage_offset not in [0x00, 0x10, 0x20]:
             raise ValueError("Linkage offset should be 0x00, 0x10, 0x20")
-        msg = ArmMsgMasterSlaveModeConfig(
+        msg = ArmMsgLeaderFollowerModeConfig(
             linkage_config, feedback_offset, ctrl_offset, linkage_offset
         )
         self._send_msg(msg)
 
-    def set_master_mode(self):
-        """Set the arm to the master arm zero force drag mode (master arm)."""
-        self._set_master_slave_config(linkage_config=0xFA)
+    def set_leader_mode(self):
+        """Set the arm to the leader arm zero force drag mode (leader arm)."""
+        self._set_leader_follower_config(linkage_config=0xFA)
 
-    def set_slave_mode(self):
-        """Set the arm to the slave arm controlled mode (slave arm)."""
-        self._set_master_slave_config(linkage_config=0xFC)
+    def set_follower_mode(self):
+        """Set the arm to the follower arm controlled mode (follower arm)."""
+        self._set_leader_follower_config(linkage_config=0xFC)
 
-    def move_master_to_home(self):
-        """Move the master arm to the home position (master arm).
+    def move_leader_to_home(self):
+        """Move the leader arm to the home position (leader arm).
 
         Notes
         -----
-        - This function will send a message to the controller to move the master
+        - This function will send a message to the controller to move the leader
           arm to the home position.
-        - After calling this function, you must call `restore_master_drag_mode`
-          to restore the master arm to the zero force drag mode.
+        - After calling this function, you must call `restore_leader_drag_mode`
+          to restore the leader arm to the zero force drag mode.
         """
-        msg = ArmMsgMasterArmMoveToHome(mode=1)
+        msg = ArmMsgLeaderArmMoveToHome(mode=1)
         self._send_msg(msg)
 
-    def restore_master_drag_mode(self):
-        """Restore the master arm to the zero force drag mode (master arm)."""
-        msg = ArmMsgMasterArmMoveToHome(mode=0)
+    def restore_leader_drag_mode(self):
+        """Restore the leader arm to the zero force drag mode (leader arm)."""
+        msg = ArmMsgLeaderArmMoveToHome(mode=0)
         self._send_msg(msg)
 
-    def get_master_joint_angles(self):
-        """Get the master arm joint angles,
-        can be used to control the slave arm.
+    def get_leader_joint_angles(self):
+        """Get the leader arm joint angles,
+        can be used to control the follower arm.
 
         Returns
         -------
         MessageAbstract[list[float]] | None
-            The joint angles feedback of the master arm.
+            The joint angles feedback of the leader arm.
             If the joint angles are not available, return None.
 
         Message
@@ -1314,39 +1314,39 @@ class Driver(ArmDriverAbstract):
 
         Examples
         --------
-        >>> mja = robot.get_master_joint_angles()
+        >>> mja = robot.get_leader_joint_angles()
         >>> if mja is not None:
         >>>     print(mja.msg)
         >>>     print(mja.hz, mja.timestamp)
         """
-        master_joint_angles: Optional[MessageAbstract[ArmMsgJointCtrl]] = None
-        if getattr(self, "_master_joint_angles", None) is None:
-            self._master_joint_angles = MessageAbstract(
+        leader_joint_angles: Optional[MessageAbstract[ArmMsgJointCtrl]] = None
+        if getattr(self, "_leader_joint_angles", None) is None:
+            self._leader_joint_angles = MessageAbstract(
                 msg=list([0.0] * self._JOINT_NUMS),
                 msg_type=ArmMsgJointCtrl.type_,
             )
-        if getattr(self._parser, "master_joint_12", None) is not None:
-            master_joint_angles = self._parser.master_joint_12
-            self._master_joint_angles.msg[0] = master_joint_angles.msg.joint_1
-            self._master_joint_angles.msg[1] = master_joint_angles.msg.joint_2
-        if getattr(self._parser, "master_joint_34", None) is not None:
-            master_joint_angles = self._parser.master_joint_34
-            self._master_joint_angles.msg[2] = master_joint_angles.msg.joint_3
-            self._master_joint_angles.msg[3] = master_joint_angles.msg.joint_4
-        if getattr(self._parser, "master_joint_56", None) is not None:
-            master_joint_angles = self._parser.master_joint_56
-            self._master_joint_angles.msg[4] = master_joint_angles.msg.joint_5
-            self._master_joint_angles.msg[5] = master_joint_angles.msg.joint_6
-        if master_joint_angles is not None:
-            self._master_joint_angles.timestamp = master_joint_angles.timestamp
-            self._master_joint_angles.hz = self._ctx.fps.get_fps(
-                master_joint_angles.msg_type
+        if getattr(self._parser, "leader_joint_12", None) is not None:
+            leader_joint_angles = self._parser.leader_joint_12
+            self._leader_joint_angles.msg[0] = leader_joint_angles.msg.joint_1
+            self._leader_joint_angles.msg[1] = leader_joint_angles.msg.joint_2
+        if getattr(self._parser, "leader_joint_34", None) is not None:
+            leader_joint_angles = self._parser.leader_joint_34
+            self._leader_joint_angles.msg[2] = leader_joint_angles.msg.joint_3
+            self._leader_joint_angles.msg[3] = leader_joint_angles.msg.joint_4
+        if getattr(self._parser, "leader_joint_56", None) is not None:
+            leader_joint_angles = self._parser.leader_joint_56
+            self._leader_joint_angles.msg[4] = leader_joint_angles.msg.joint_5
+            self._leader_joint_angles.msg[5] = leader_joint_angles.msg.joint_6
+        if leader_joint_angles is not None:
+            self._leader_joint_angles.timestamp = leader_joint_angles.timestamp
+            self._leader_joint_angles.hz = self._ctx.fps.get_fps(
+                leader_joint_angles.msg_type
             )
             if Validator.is_joints(
-                self._master_joint_angles.msg,
+                self._leader_joint_angles.msg,
                 length=self._JOINT_NUMS
             ):
-                return self._master_joint_angles
+                return self._leader_joint_angles
         return None
 
     # -------------------------- Other --------------------------

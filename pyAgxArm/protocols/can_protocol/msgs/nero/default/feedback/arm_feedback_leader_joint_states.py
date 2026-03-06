@@ -3,11 +3,11 @@
 from ....core.attritube_base import AttributeBase
 from typing import Union
 
-class ArmMsgFeedbackMasterJointStates(AttributeBase):
+class ArmMsgFeedbackLeaderJointStates(AttributeBase):
     '''
     feedback
     
-    主臂关节角度反馈,单位rad
+    主导臂（Leader Arm）关节角度反馈,单位rad
     
     CAN ID: 
         0x500 + NUM
@@ -24,7 +24,7 @@ class ArmMsgFeedbackMasterJointStates(AttributeBase):
     '''
     feedback
     
-    Joint Angle Feedback for Robotic Arm, in Radians
+    Joint Angle Feedback for Leader Arm, in Radians
     
     CAN ID: 
         0x500 + NUM
@@ -54,49 +54,49 @@ class ArmMsgFeedbackMasterJointStates(AttributeBase):
         self.joint_6 = joint_6
         self.joint_7 = joint_7
 
-class ArmMsgFeedbackMasterJointStates1(AttributeBase):
+class ArmMsgFeedbackLeaderJointStates1(AttributeBase):
     '''CAN ID:
         0x501'''
     def __init__(self, 
                  joint_1: int = 0):
         self.joint_1 = joint_1
 
-class ArmMsgFeedbackMasterJointStates2(AttributeBase):
+class ArmMsgFeedbackLeaderJointStates2(AttributeBase):
     '''CAN ID:
         0x502'''
     def __init__(self, 
                  joint_2: int = 0):
         self.joint_2 = joint_2
 
-class ArmMsgFeedbackMasterJointStates3(AttributeBase):
+class ArmMsgFeedbackLeaderJointStates3(AttributeBase):
     '''CAN ID:
         0x503'''
     def __init__(self, 
                  joint_3: int = 0):
         self.joint_3 = joint_3
 
-class ArmMsgFeedbackMasterJointStates4(AttributeBase):
+class ArmMsgFeedbackLeaderJointStates4(AttributeBase):
     '''CAN ID:
         0x504'''
     def __init__(self, 
                  joint_4: int = 0):
         self.joint_4 = joint_4
 
-class ArmMsgFeedbackMasterJointStates5(AttributeBase):
+class ArmMsgFeedbackLeaderJointStates5(AttributeBase):
     '''CAN ID:
         0x505'''
     def __init__(self, 
                  joint_5: int = 0):
         self.joint_5 = joint_5
 
-class ArmMsgFeedbackMasterJointStates6(AttributeBase):
+class ArmMsgFeedbackLeaderJointStates6(AttributeBase):
     '''CAN ID:
         0x506'''
     def __init__(self, 
                  joint_6: int = 0):
         self.joint_6 = joint_6
 
-class ArmMsgFeedbackMasterJointStates7(AttributeBase):
+class ArmMsgFeedbackLeaderJointStates7(AttributeBase):
     '''CAN ID:
         0x507'''
     def __init__(self, 

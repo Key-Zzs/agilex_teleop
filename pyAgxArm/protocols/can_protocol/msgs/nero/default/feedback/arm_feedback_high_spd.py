@@ -17,9 +17,9 @@ class ArmMsgFeedbackHighSpd(ArmMsgFeedbackHighSpdBase):
         0X251~0x257
 
     Args:
-        motor_speed: 电机当前转速
+        velocity: 电机当前转速
         current: 电机当前电流
-        pos: 电机当前位置
+        position: 电机当前位置
         effort: 经过固定系数转换的力矩,单位0.001N/m
     
     位描述:
@@ -45,9 +45,9 @@ class ArmMsgFeedbackHighSpd(ArmMsgFeedbackHighSpdBase):
         0x251~0x257
 
     Args:
-        motor_speed: Motor Speed.
+        velocity: Motor Speed.
         current: Motor Current.
-        pos: Motor Position.
+        position: Motor Position.
         effort: Torque converted using a fixed coefficient, with a unit of 0.001 N/m.
 
     

@@ -5,11 +5,11 @@ from typing_extensions import (
 )
 from ....core.attritube_base import AttributeBase
 
-class ArmMsgMasterSlaveModeConfig(AttributeBase):
+class ArmMsgLeaderFollowerModeConfig(AttributeBase):
     '''
     transmit
     
-    随动主从模式设置指令
+    随动 Leader-Follower 模式设置指令
     
     CAN ID:
         0x470
@@ -24,8 +24,8 @@ class ArmMsgMasterSlaveModeConfig(AttributeBase):
     
         Byte 0 linkage_config: uint8, 联动设置指令。
                                 0x00 无效
-                                0xFA 设置为示教输入臂
-                                0xFC 设置为运动输出臂
+                                0xFA 设置为示教输入臂（Leader Arm）
+                                0xFC 设置为运动输出臂（Follower Arm）
         Byte 1 feedback_offset: uint8, 反馈指令偏移值。
                                 0x00 : 不偏移/恢复默认
                                 0x10 ：反馈指令基 ID 由 2Ax偏移为 2Bx
@@ -42,7 +42,7 @@ class ArmMsgMasterSlaveModeConfig(AttributeBase):
     '''
     transmit
 
-    Follow Master-Slave Mode Setting Command
+    Follow Leader-Follower Mode Setting Command
 
     CAN ID:
         0x470
@@ -57,8 +57,8 @@ class ArmMsgMasterSlaveModeConfig(AttributeBase):
 
         Byte 0 linkage_config: uint8, linkage setting command.
             0x00: Invalid.
-            0xFA: Set as teaching input arm.
-            0xFC: Set as motion output arm.
+            0xFA: Set as teaching input arm (Leader Arm).
+            0xFC: Set as motion output arm (Follower Arm).
 
         Byte 1 feedback_offset: uint8, feedback instruction offset value.
             0x00: No offset/restore default.

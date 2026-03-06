@@ -106,7 +106,7 @@ while True:
     # print(robot.get_joint_angles())
     # print(robot.get_flange_pose())
 
-    # print(robot.get_master_joint_angles())
+    # print(robot.get_leader_joint_angles())
 
     # print(robot.get_driver_states(1))
     # print(robot.get_motor_states(1))
@@ -123,10 +123,10 @@ while True:
     time.sleep(0.005)
 
 
-# -------------------------- Master/Slave --------------------------
+# -------------------------- Leader-Follower --------------------------
 
-# robot.set_master_mode()
-# robot.set_slave_mode()
+# robot.set_leader_mode()
+# robot.set_follower_mode()
 
 
 # -------------------------- TCP ----------------------------

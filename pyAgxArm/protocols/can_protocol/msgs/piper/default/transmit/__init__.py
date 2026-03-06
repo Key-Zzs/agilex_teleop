@@ -8,8 +8,8 @@ from .arm_joint_ctrl import ArmMsgJointCtrl, \
 from .arm_joint_mit_ctrl import ArmMsgJointMitCtrl, \
     ArmMsgJointMitCtrl1, ArmMsgJointMitCtrl2, ArmMsgJointMitCtrl3, \
     ArmMsgJointMitCtrl4, ArmMsgJointMitCtrl5, ArmMsgJointMitCtrl6
-from .arm_master_slave_config import ArmMsgMasterSlaveModeConfig
-from .arm_master_arm_move_to_home import ArmMsgMasterArmMoveToHome
+from .arm_leader_follower_config import ArmMsgLeaderFollowerModeConfig
+from .arm_leader_arm_move_to_home import ArmMsgLeaderArmMoveToHome
 from .arm_motion_ctrl import ArmMsgMotionCtrl
 from .arm_mode_ctrl import ArmMsgModeCtrl
 from .arm_end_pose_ctrl import ArmMsgEndPoseCtrl, ArmMsgEndPoseCtrlXY, ArmMsgEndPoseCtrlZRX, ArmMsgEndPoseCtrlRYRZ
@@ -32,8 +32,8 @@ __all__ = [
     'ArmMsgJointCtrl34',
     'ArmMsgJointCtrl56',
     'ArmMsgCircularPatternCoordNumUpdateCtrl',
-    'ArmMsgMasterSlaveModeConfig',
-    'ArmMsgMasterArmMoveToHome',
+    'ArmMsgLeaderFollowerModeConfig',
+    'ArmMsgLeaderArmMoveToHome',
     'ArmMsgMotorEnableDisableConfig',
     'ArmMsgSearchMotorMaxAngleSpdAccLimit',
     'ArmMsgMotorAngleLimitMaxSpdSet',

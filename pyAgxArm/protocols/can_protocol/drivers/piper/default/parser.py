@@ -78,9 +78,9 @@ class PiperDefaultDriverAPIProtoAdapter(DriverAPIProtoAdapter):
         return cls._PAYLOAD_CODE[value]
 
 class _HighSpdLike(Protocol):
-    motor_speed: float
+    velocity: float
     current: float
-    pos: float
+    position: float
 
 
 class _LowSpdLike(Protocol):
@@ -130,14 +130,14 @@ class Codec:
     # Common codec helpers
     # -------------------------
     def decode_high_spd(self, motor_state: _HighSpdLike, can_data: bytearray) -> None:
-        """高速反馈通用解码：写入 motor_speed/current/pos"""
-        motor_state.motor_speed = (
+        """高速反馈通用解码：写入 velocity/current/position"""
+        motor_state.velocity = (
             nc.ConvertToNegative_16bit(nc.ConvertBytesToInt(can_data, 0, 2)) * 1e-3
         )
         motor_state.current = (
             nc.ConvertToNegative_16bit(nc.ConvertBytesToInt(can_data, 2, 4)) * 1e-3
         )
-        motor_state.pos = (
+        motor_state.position = (
             nc.ConvertToNegative_32bit(nc.ConvertBytesToInt(can_data, 4, 8)) * 1e-3
         )
 
@@ -437,11 +437,11 @@ class Codec:
     ) -> List[int]:
         return nc.ConvertToList_8bit(msg.instruction_num, False) + [0] * 7
 
-    def encode_191_master_arm_move_to_home(
-        self, msg: ArmMsgMasterArmMoveToHome
+    def encode_191_leader_arm_move_to_home(
+        self, msg: ArmMsgLeaderArmMoveToHome
     ) -> List[int]:
         """
-        0x191 请求主臂回零（V1.7-4 及以后）
+        0x191 请求主导臂（Leader Arm）回零（V1.7-4 及以后）
         data 固定 8 字节，根据 mode 选择不同位：
           - 0: [0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]
           - 1: [0x01, 0x01, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00]
@@ -456,8 +456,8 @@ class Codec:
             return [0x01, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00]
         raise ValueError("mode should be 0, 1, or 2")
 
-    def encode_470_master_slave_mode_config(
-        self, msg: ArmMsgMasterSlaveModeConfig
+    def encode_470_leader_follower_mode_config(
+        self, msg: ArmMsgLeaderFollowerModeConfig
     ) -> List[int]:
         return (
             nc.ConvertToList_8bit(msg.linkage_config, False)
@@ -619,9 +619,9 @@ class Parser(TableDriven, ProtocolParserInterface):
 
         firmware_info: Optional[MessageAbstract[ArmMsgFeedbackFirmware]]
 
-        master_joint_12: Optional[MessageAbstract[ArmMsgJointCtrl12]]
-        master_joint_34: Optional[MessageAbstract[ArmMsgJointCtrl34]]
-        master_joint_56: Optional[MessageAbstract[ArmMsgJointCtrl56]]
+        leader_joint_12: Optional[MessageAbstract[ArmMsgJointCtrl12]]
+        leader_joint_34: Optional[MessageAbstract[ArmMsgJointCtrl34]]
+        leader_joint_56: Optional[MessageAbstract[ArmMsgJointCtrl56]]
 
     def __init__(self, fps_manager: FPSManager, codec: Optional[Codec] = None):
         super().__init__(fps_manager=fps_manager)
@@ -701,17 +701,17 @@ class Parser(TableDriven, ProtocolParserInterface):
         # 接收侧：can_id -> (attr_name, msg_cls, decoder)
         return {
             0x155: (
-                "master_joint_12",
+                "leader_joint_12",
                 ArmMsgJointCtrl12,
                 self._codec.decode_155_joint_ctrl_12
             ),
             0x156: (
-                "master_joint_34",
+                "leader_joint_34",
                 ArmMsgJointCtrl34,
                 self._codec.decode_156_joint_ctrl_34
             ),
             0x157: (
-                "master_joint_56",
+                "leader_joint_56",
                 ArmMsgJointCtrl56,
                 self._codec.decode_157_joint_ctrl_56
             ),
@@ -878,13 +878,13 @@ class Parser(TableDriven, ProtocolParserInterface):
             ArmMsgJointMitCtrl4.type_: (0x15D, self._codec.pack_joint_mit_ctrl),
             ArmMsgJointMitCtrl5.type_: (0x15E, self._codec.pack_joint_mit_ctrl),
             ArmMsgJointMitCtrl6.type_: (0x15F, self._codec.pack_joint_mit_ctrl),
-            ArmMsgMasterArmMoveToHome.type_: (
+            ArmMsgLeaderArmMoveToHome.type_: (
                 0x191,
-                self._codec.encode_191_master_arm_move_to_home
+                self._codec.encode_191_leader_arm_move_to_home
             ),
-            ArmMsgMasterSlaveModeConfig.type_: (
+            ArmMsgLeaderFollowerModeConfig.type_: (
                 0x470,
-                self._codec.encode_470_master_slave_mode_config
+                self._codec.encode_470_leader_follower_mode_config
             ),
             ArmMsgMotorEnableDisableConfig.type_: (
                 0x471,

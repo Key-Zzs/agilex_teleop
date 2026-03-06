@@ -30,15 +30,15 @@ from .arm_feedback_high_spd import ArmMsgFeedbackHighSpd, ArmMsgFeedbackAllHighS
 from .arm_feedback_joint_states import ArmMsgFeedbackJointStates, ArmMsgFeedbackJointStates7
 from .arm_feedback_low_spd import ArmMsgFeedbackLowSpd, ArmMsgFeedbackAllLowSpd, ArmMsgFeedbackLowSpd7
 from .arm_feedback_status import ArmMsgFeedbackStatus, ArmMsgFeedbackStatusEnum
-from .arm_feedback_master_joint_states import (
-    ArmMsgFeedbackMasterJointStates,
-    ArmMsgFeedbackMasterJointStates1,
-    ArmMsgFeedbackMasterJointStates2,
-    ArmMsgFeedbackMasterJointStates3,
-    ArmMsgFeedbackMasterJointStates4,
-    ArmMsgFeedbackMasterJointStates5,
-    ArmMsgFeedbackMasterJointStates6,
-    ArmMsgFeedbackMasterJointStates7,
+from .arm_feedback_leader_joint_states import (
+    ArmMsgFeedbackLeaderJointStates,
+    ArmMsgFeedbackLeaderJointStates1,
+    ArmMsgFeedbackLeaderJointStates2,
+    ArmMsgFeedbackLeaderJointStates3,
+    ArmMsgFeedbackLeaderJointStates4,
+    ArmMsgFeedbackLeaderJointStates5,
+    ArmMsgFeedbackLeaderJointStates6,
+    ArmMsgFeedbackLeaderJointStates7,
 )
 
 __all__ = [
@@ -80,12 +80,12 @@ __all__ = [
     'ArmMsgFeedbackLowSpd7',
     'ArmMsgFeedbackRespSetInstruction',
     'ArmMsgFeedbackFirmware',
-    'ArmMsgFeedbackMasterJointStates',
-    'ArmMsgFeedbackMasterJointStates1',
-    'ArmMsgFeedbackMasterJointStates2',
-    'ArmMsgFeedbackMasterJointStates3',
-    'ArmMsgFeedbackMasterJointStates4',
-    'ArmMsgFeedbackMasterJointStates5',
-    'ArmMsgFeedbackMasterJointStates6',
-    'ArmMsgFeedbackMasterJointStates7',
+    'ArmMsgFeedbackLeaderJointStates',
+    'ArmMsgFeedbackLeaderJointStates1',
+    'ArmMsgFeedbackLeaderJointStates2',
+    'ArmMsgFeedbackLeaderJointStates3',
+    'ArmMsgFeedbackLeaderJointStates4',
+    'ArmMsgFeedbackLeaderJointStates5',
+    'ArmMsgFeedbackLeaderJointStates6',
+    'ArmMsgFeedbackLeaderJointStates7',
 ]

@@ -16,9 +16,9 @@ class ArmMsgFeedbackHighSpd(AttributeBase):
         0X251~0x256
 
     Args:
-        motor_speed: 电机当前转速
+        velocity: 电机当前转速
         current: 电机当前电流
-        pos: 电机当前位置
+        position: 电机当前位置
         torque: 经过固定系数转换的力矩,单位0.001N/m
     
     位描述:
@@ -44,9 +44,9 @@ class ArmMsgFeedbackHighSpd(AttributeBase):
         0x251~0x256
 
     Args:
-        motor_speed: Motor Speed.
+        velocity: Motor Speed.
         current: Motor Current.
-        pos: Motor Position.
+        position: Motor Position.
         torque: Torque converted using a fixed coefficient, with a unit of 0.001 N/m.
 
     
@@ -69,13 +69,13 @@ class ArmMsgFeedbackHighSpd(AttributeBase):
     _VALID_CAN_ID_2 = [0x254, 0x255, 0x256]
 
     def __init__(self,
-                 motor_speed: Union[int, float] = 0,
+                 velocity: Union[int, float] = 0,
                  current: Union[int, float] = 0,
-                 pos: Union[int, float] = 0
+                 position: Union[int, float] = 0
                  ):
-        self.motor_speed = motor_speed
+        self.velocity = velocity
         self.current = current
-        self.pos = pos
+        self.position = position
     
     @property
     def torque(self) -> float:

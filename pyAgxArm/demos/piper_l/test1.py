@@ -114,7 +114,7 @@ while True:
     # print(robot.get_joint_angles())
     # print(robot.get_flange_pose())
 
-    # print(robot.get_master_joint_angles())
+    # print(robot.get_leader_joint_angles())
     # print(end_effector.get_gripper_ctrl_states())
 
     # print(robot.get_driver_states(1))
@@ -211,14 +211,14 @@ while True:
 # end_effector.position_time_ctrl(mode='time', thumb_tip=200)
 
 
-# -------------------------- Master Arm --------------------------
+# -------------------------- Leader-Follower Arm --------------------------
 
-# robot.set_master_mode()
-# robot.set_slave_mode()
+# robot.set_leader_mode()
+# robot.set_follower_mode()
 # time.sleep(2)
-# robot.move_master_to_home()
+# robot.move_leader_to_home()
 # time.sleep(2)
-# robot.restore_master_drag_mode()
+# robot.restore_leader_drag_mode()
 
 
 # ------------------------- Other --------------------------------
