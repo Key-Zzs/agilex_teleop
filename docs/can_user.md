@@ -18,7 +18,11 @@
 
 **Script Path:** `scripts`
 
-Navigate to the corresponding folder based on your system. For example, on Ubuntu the script path is `scripts/ubuntu`.
+Navigate to the corresponding folder based on your system. For example, on Ubuntu the script path is `pyAgxArm/scripts/ubuntu`.
+
+```shell
+cd pyAgxArm/scripts/ubuntu
+```
 
 **Install CAN Tools:**
 
@@ -193,7 +197,11 @@ Run `ifconfig` and check if both `can_left` and `can_right` appear.
 
 **脚本路径：** `scripts`
 
-根据系统进入对应的文件夹，例如 Ubuntu 系统下脚本路径为 `scripts/ubuntu`。
+根据系统进入对应的文件夹，例如 Ubuntu 系统下脚本路径为 `pyAgxArm/scripts/ubuntu`。
+
+```shell
+cd pyAgxArm/scripts/ubuntu
+```
 
 **安装 CAN 工具：**
 
