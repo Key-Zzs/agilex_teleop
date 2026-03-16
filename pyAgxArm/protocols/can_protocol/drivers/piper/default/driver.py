@@ -696,8 +696,11 @@ class Driver(ArmDriverAbstract):
             self._send_msg(ArmMsgReqFirmware())
 
         def is_ready() -> bool:
-            if self.get_fps() <= 0:
-                clear()
+            if (getattr(self._parser, "firmware_info", None) is not None
+                and len(self._parser.firmware_info.msg.data_seg) >= 3
+                and (self._parser.firmware_info.msg.data_seg[0:3] != bytearray(b'H-V')
+                     or self.get_fps() <= 0)):
+                self._parser.firmware_info.msg.clear()
                 return False
             
             return (
