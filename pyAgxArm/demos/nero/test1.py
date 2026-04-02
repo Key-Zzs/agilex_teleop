@@ -17,7 +17,7 @@ def wait_motion_done(robot, timeout: float = 5.0, poll_interval: float = 0.1) ->
         time.sleep(poll_interval)
 
 
-robot_cfg = create_agx_arm_config(robot="nero", comm="can", channel="can0", interface="socketcan")
+robot_cfg = create_agx_arm_config(robot="nero", comm="can", channel="can_nero_left", interface="socketcan")
 print(robot_cfg)
 robot = AgxArmFactory.create_arm(robot_cfg)
 robot.connect()
