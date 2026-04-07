@@ -719,15 +719,13 @@ class NeroDualArmServer:
             log.error(f"[ERROR] servo_j failed: {e}")
             return False
 
-
-# TODO: server start
 def start_server(port: int = 4242, gripper_enabled: bool = True):
     server = zerorpc.Server(NeroDualArmServer(gripper_enabled))
     server.bind(f"tcp://0.0.0.0:{port}")
     log.info(f"[SERVER] Listening on tcp://0.0.0.0:{port}")
     server.run()
 
-
+# TODO: test server
 if __name__ == '__main__':
     import argparse
     parser = argparse.ArgumentParser()
