@@ -212,12 +212,14 @@ class NeroDualArmServer:
             target = current + pose
         else:
             target = pose
+
+        #TODO: 限幅
         
         target_list = target.tolist()
         print("[DEBUG] move_p target:", target_list)
     
         self.left_robot.set_speed_percent(30)
-        
+
         self.left_robot.move_p(target_list)
         time.sleep(3.0)
         print("move to end-effector pose completed")
@@ -251,12 +253,15 @@ class NeroDualArmServer:
         """Move right arm to end-effector pose [x, y, z, roll, pitch, yaw] (m, rad)."""
         if self.right_robot is None:
             return
+        
         if delta:
             current = self.right_robot_get_ee_pose()
             target = np.array(current) + np.array(pose)
         else:
             target = pose
         
+        #TODO: 限幅
+
         target_list = target.tolist()
         print("[DEBUG] move_p target:", target_list)
     
@@ -370,31 +375,74 @@ class NeroDualArmServer:
 
     # ==================== ServoJ Control (Joint Servo) ====================
     
-    def servo_j(self, arm_name: str, joints: list, t: float = 0.1, 
-                lookahead_time: float = 0.05, gain: float = 300) -> bool:
+    def servo_j(self, robot_arm: str, joints: list) -> bool:
         """
-        Send ServoJ with ABSOLUTE joint angles (radians).
+        直接输入某个机械臂名称与目标关节角度（度），控制机械臂运动。
+
         Args:
-            joints: Joint angles in RADIANS
+            robot_arm: "left_robot" or "right_robot"
+            joints: 7维绝对关节角度（度）
+
+        Returns:
+            bool: 成功返回 True，失败返回 False
         """
-        if self._robot is None:
+        try:
+            joints = np.asarray(joints, dtype=float)
+            if joints.shape[0] != 7:
+                raise ValueError(f"Expected 7 joints, got {joints.shape[0]}")
+
+            print(f"[DEBUG] servo_j target (degree): {joints}")
+            
+            for i in range(7):
+                joints[i] = np.deg2rad(joints[i])
+                
+            if robot_arm == "left_robot":
+                self.left_robot_move_to_joint_positions(joints.tolist(), delta=False)
+            elif robot_arm == "right_robot":
+                self.right_robot_move_to_joint_positions(joints.tolist(), delta=False)
+            else:
+                raise ValueError("robot_arm must be 'left_robot' or 'right_robot'")
+
             return True
-        # Convert radians to degrees for ROS wrapper
-        joints_deg = np.degrees(joints).tolist()
-        return self._robot.servo_j(arm_name, joints_deg, t, lookahead_time, gain)
-    
-    def servo_j_delta(self, arm_name: str, delta_joints: list, t: float = 0.1,
-                      lookahead_time: float = 0.05, gain: float = 300) -> bool:
+
+        except Exception as e:
+            print(f"[ERROR] servo_j failed: {e}")
+            return False
+
+
+    def servo_j_delta(self, robot_arm: str, delta_joints: list) -> bool:
         """
-        Send ServoJ with RELATIVE joint increments (radians).
+        直接输入某个机械臂名称与关节角度增量（度），控制机械臂运动。
+
         Args:
-            delta_joints: Joint increments in RADIANS
+            robot_arm: "left_robot" or "right_robot"
+            delta_joints: 7维关节角度增量（度）
+
+        Returns:
+            bool: 成功返回 True，失败返回 False
         """
-        if self._robot is None:
+        try:
+            delta_joints = np.asarray(delta_joints, dtype=float)
+            if delta_joints.shape[0] != 7:
+                raise ValueError(f"Expected 7 joints, got {delta_joints.shape[0]}")
+
+            print(f"[DEBUG] servo_j_delta target (degree): {delta_joints}")
+
+            for i in range(7):
+                delta_joints[i] = np.deg2rad(delta_joints[i])
+
+            if robot_arm == "left_robot":
+                self.left_robot_move_to_joint_positions(delta_joints.tolist(), delta=True)
+            elif robot_arm == "right_robot":
+                self.right_robot_move_to_joint_positions(delta_joints.tolist(), delta=True)
+            else:
+                raise ValueError("robot_arm must be 'left_robot' or 'right_robot'")
+
             return True
-        # Convert radians to degrees for ROS wrapper
-        delta_joints_deg = np.degrees(delta_joints).tolist()
-        return self._robot.servo_j_delta(arm_name, delta_joints_deg, t, lookahead_time, gain)
+
+        except Exception as e:
+            print(f"[ERROR] servo_j_delta failed: {e}")
+            return False
     
     # ==================== ServoP Control (Pose Servo) ====================
     
