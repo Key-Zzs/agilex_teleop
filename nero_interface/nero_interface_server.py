@@ -7,10 +7,14 @@ import zerorpc
 import numpy as np
 import logging
 import time
+import math
 from typing import Optional, List
 import sys, os
+from analytic_IK_solver import Solver, build_joint_limits_from_cfg
+from nero_ik.ik_solver import fk
+from pyAgxArm.utiles.tf import rot_to_rpy
 
-ROOT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+ROOT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "."))
 sys.path.insert(0, ROOT_DIR)
 
 log = logging.getLogger(__name__)
@@ -27,8 +31,8 @@ class NeroDualArmServer:
         
         try:
             from pyAgxArm import create_agx_arm_config, AgxArmFactory
-            cfg = create_agx_arm_config(robot="nero", comm="can", channel="can_left")
-            self.left_robot = AgxArmFactory.create_arm(cfg)
+            self.left_cfg = create_agx_arm_config(robot="nero", comm="can", channel="can_left")
+            self.left_robot = AgxArmFactory.create_arm(self.left_cfg)
             self.left_robot.connect()
 
             # Enable all joints
@@ -48,8 +52,8 @@ class NeroDualArmServer:
         
         try:
             from pyAgxArm import create_agx_arm_config, AgxArmFactory
-            cfg = create_agx_arm_config(robot="nero", comm="can", channel="can_right")
-            self.right_robot = AgxArmFactory.create_arm(cfg)
+            self.right_cfg = create_agx_arm_config(robot="nero", comm="can", channel="can_right")
+            self.right_robot = AgxArmFactory.create_arm(self.right_cfg)
             self.right_robot.connect()
 
             # Enable all joints
@@ -93,30 +97,19 @@ class NeroDualArmServer:
         log.info("Nero Dual-Gripper Server Ready")
         log.info("=" * 50)
 
-        # Initialize right IK solver
+        # Initialize IK solver
+        self.left_joint_limits = None
+        self.right_joint_limits = None
         self.left_ik_solver = None
         self.right_ik_solver = None
+        self.track_freq = 20.0
+        self.dt = 1.0 / self.track_freq
 
         try:
-            joint_limits = [(-3.14, 3.14)] * 7  # TODO: 用真实关节限位替换
-
-            # 直接复用你已有类
-            from ik_test.test_pos_flw_ik import AnalyticIkSolver
-
-            self.left_ik_solver = AnalyticIkSolver(joint_limits, dt=0.02)
-            self.right_ik_solver = AnalyticIkSolver(joint_limits, dt=0.02)
-
-            # 初始化状态
-            left_q = self.left_robot_get_joint_positions()
-            right_q = self.right_robot_get_joint_positions()
-
-            self.left_ik_solver.init_state(left_q)
-            self.right_ik_solver.init_state(right_q)
-
-            log.info("[SERVER] IK solver initialized")
-
+            self.left_ik_solver = self.setup_ik_solver(self.left_robot, self.left_cfg, "Left Arm")
+            # self.right_ik_solver = self.setup_ik_solver(self.right_robot, self.right_cfg, "Right Arm")
         except Exception as e:
-            log.error(f"[ERROR] IK init failed: {e}")
+            log.error(f"[ERROR] IK solvers init failed: {e}")
 
     # ==================== Left Arm State Query ====================
 
@@ -223,17 +216,16 @@ class NeroDualArmServer:
         else:
             target = positions
 
-        #TODO: 限幅
-
         target_list = target.tolist()
         log.info("[DEBUG] move_j target:", target_list)
 
         self.left_robot.move_j(target_list)
-        time.sleep(3.0)
+        # time.sleep(3.0)
         log.info("move to joint positions completed")
         
     def left_robot_move_to_ee_pose(self, pose: list, delta: bool = False):
         """Move left arm to end-effector pose [x, y, z, roll, pitch, yaw] (m, rad)."""
+        """use move_p for direct pose control, but it may cause discontinuity and vibration."""
         if self.left_robot is None:
             return
         
@@ -247,8 +239,6 @@ class NeroDualArmServer:
             target = current + pose
         else:
             target = pose
-
-        #TODO: 限幅
         
         target_list = target.tolist()
         log.info("[DEBUG] move_p target:", target_list)
@@ -256,7 +246,7 @@ class NeroDualArmServer:
         self.left_robot.set_speed_percent(30)
 
         self.left_robot.move_p(target_list)
-        time.sleep(3.0)
+        # time.sleep(3.0)
         log.info("move to end-effector pose completed")
 
     # ==================== Right Arm Motion ====================
@@ -277,13 +267,11 @@ class NeroDualArmServer:
         else:
             target = positions
 
-        #TODO: 限幅
-
         target_list = target.tolist()
         log.info("[DEBUG] move_j target:", target_list)
 
         self.right_robot.move_j(target_list)
-        time.sleep(3.0)
+        # time.sleep(3.0)
         log.info("move to joint positions completed")
     
     def right_robot_move_to_ee_pose(self, pose: list, delta: bool = False):
@@ -296,14 +284,12 @@ class NeroDualArmServer:
             target = np.array(current) + np.array(pose)
         else:
             target = pose
-        
-        #TODO: 限幅
 
         target_list = target.tolist()
         log.info("[DEBUG] move_p target:", target_list)
     
         self.right_robot.move_p(target_list)
-        time.sleep(3.0)
+        # time.sleep(3.0)
         log.info("move to end-effector pose completed")
 
     # TODO
@@ -419,7 +405,7 @@ class NeroDualArmServer:
         Args:
             robot_arm: "left_robot" or "right_robot"
             joints: 7维绝对关节角度（度）
-            delta: 绝对控制(False)，增量控制(True)
+            delta: False=绝对控制, True=增量控制
 
         Returns:
             bool: 成功返回 True，失败返回 False
@@ -434,6 +420,7 @@ class NeroDualArmServer:
             for i in range(7):
                 joints[i] = np.deg2rad(joints[i])
                 
+            # TODO: 改为 move_js
             if robot_arm == "left_robot":
                 self.left_robot_move_to_joint_positions(joints.tolist(), delta=delta)
             elif robot_arm == "right_robot":
@@ -449,8 +436,7 @@ class NeroDualArmServer:
         
     
     # ==================== ServoP Control (Pose Servo) ====================
-    
-    # TODO: scaling for what?
+
     def servo_p(self, robot_arm: str, pose: list, delta: bool) -> bool:
         """
         Send ServoP with target pose [x, y, z, rx, ry, rz] (m, radians).
@@ -461,55 +447,124 @@ class NeroDualArmServer:
         Returns:
             bool: 成功返回 True，失败返回 False
         """
-        if self._robot is None:
+        try:
+            # 1. 选择 robot & IK
+            if robot_arm == "left_robot":
+                robot = self.left_robot
+                ik_solver = self.left_ik_solver
+            elif robot_arm == "right_robot":
+                robot = self.right_robot
+                ik_solver = self.right_ik_solver
+            else:
+                log.error(f"[ERROR] invalid robot_arm: {robot_arm}")
+                return False
+
+            if robot is None or ik_solver is None:
+                log.error("[ERROR] robot or IK solver not ready")
+                return False
+            
+            # 2. 计算 target_pose
+            if delta:
+                # 获取当前真实关节角
+                current_pose = None
+                current_joints = None
+                while current_pose is None or current_joints is None:
+                    fp = robot.get_flange_pose()
+                    ja = robot.get_joint_angles()
+                    if fp is not None: current_pose = fp.msg
+                    if ja is not None: current_joints = ja.msg
+                    time.sleep(0.1)
+
+                q_current = np.array(current_joints, dtype=float)
+                T_fk = fk(q_current, ik_solver.nero_params)
+                fk_pos = T_fk[:3, 3]
+                fk_rpy = rot_to_rpy(T_fk[:3, :3].tolist())
+
+                robot_pos = np.array(current_pose[:3], dtype=float)
+                robot_rpy = np.array(current_pose[3:], dtype=float)
+
+                print(f"FK 理论位姿: pos=[{fk_pos[0]:.4f}, {fk_pos[1]:.4f}, {fk_pos[2]:.4f}]")
+                print(f"FK 理论位姿: rpy=[{fk_rpy[0]:.4f}, {fk_rpy[1]:.4f}, {fk_rpy[2]:.4f}]")
+                print(f"机器人返回:   pos=[{robot_pos[0]:.4f}, {robot_pos[1]:.4f}, {robot_pos[2]:.4f}]")
+                print(f"机器人返回:   rpy=[{robot_rpy[0]:.4f}, {robot_rpy[1]:.4f}, {robot_rpy[2]:.4f}]")
+                
+                pos_diff = np.linalg.norm(fk_pos - robot_pos) * 1000.0
+                rpy_diff = np.linalg.norm(np.array(fk_rpy) - robot_rpy) * 180.0 / math.pi
+                print(f"位置差异: {pos_diff:.2f} mm")
+                print(f"姿态差异: {rpy_diff:.2f} deg")
+                print("==========================================\n")
+                
+                fk_pose = np.array([
+                    fk_pos[0], fk_pos[1], fk_pos[2], 
+                    fk_rpy[0], fk_rpy[1], fk_rpy[2]
+                ], dtype=float)
+                
+                # 位置可以直接相加
+                target_pos = fk_pos + np.array(pose[:3], dtype=float)
+                
+                # 姿态需要特殊处理（小增量近似）
+                target_rpy = np.array(fk_rpy, dtype=float) + np.array(pose[3:], dtype=float)
+                # 归一化到 [-pi, pi]
+                target_rpy = np.mod(target_rpy + np.pi, 2 * np.pi) - np.pi
+                
+                target_fk_pose = np.concatenate([target_pos, target_rpy])
+            else:
+                target_fk_pose = np.array(pose, dtype=float)
+
+            # 3. IK 求解
+            q_cmd = ik_solver.solve(target_fk_pose)
+            print(f"计算出的关节角度: {q_cmd}")
+
+            # 增加对求解失败的安全校验 (判断是否返回了 None 或者空数组)
+            if q_cmd is None or len(q_cmd) == 0:
+                log.error("[ERROR] IK solve failed: returned None/Empty")
+                return False
+
+            if isinstance(q_cmd, np.ndarray):
+                q_cmd = q_cmd.tolist()
+
+            # 4. 下发关节控制
+            robot.move_js(q_cmd)
+
             return True
-        # Convert m to mm, radians to degrees for ROS wrapper
-        pose_array = np.array(pose)
-        pose_nero = np.concatenate([
-            pose_array[:3] * 1000,  # m -> mm
-            np.degrees(pose_array[3:])  # rad -> deg
-        ]).tolist()
-        return self._robot.servo_p(arm_name, pose_nero)
+
+        except Exception as e:
+            log.error(f"[ERROR] exception: {e}")
+            return False
     
     
     # ==================== Inverse Kinematics ====================
-    
-    def inverse_kinematics(self, arm_name: str, pose: list, current_joints: list = None):
-        """
-        Solve IK using Nero controller.
 
-        Args:
-            arm_name: 'left_robot', 'right_robot', 'left', or 'right'
-            pose: Target pose [x, y, z, rx, ry, rz] (m, radians)
-            current_joints: Current joints for reference (radians)
+    def setup_ik_solver(self, robot, cfg, name: str):
+        """辅助方法：获取初始关节角，提取限位，并初始化 IK Solver"""
+        print(f"[{name}] 正在获取当前关节角作为 IK 初始基准...")
+        current_pose = None
+        current_joints = None
+        while current_pose is None or current_joints is None:
+            fp = robot.get_flange_pose()
+            ja = robot.get_joint_angles()
+            if fp is not None: current_pose = fp.msg
+            if ja is not None: current_joints = ja.msg
+            time.sleep(0.1)
 
-        Returns:
-            Joint angles (radians) or None if failed
-        """
-        try:
-            pose = np.asarray(pose, dtype=float)
-            if pose.shape[0] != 6:
-                raise ValueError(f"Expected 6 pose values, got {pose.shape[0]}")
+        # 获取关节限位
+        joint_limits = []
+        for i in range(1, 8):
+            lo, hi = cfg["joint_limits"][f"joint{i}"]
+            joint_limits.append((lo, hi))
 
-            if arm_name in ("left", "left_robot"):
-                solver = self.left_ik_solver
-            elif arm_name in ("right", "right_robot"):
-                solver = self.right_ik_solver
-            else:
-                raise ValueError("Invalid arm_name")
+        # 实例化解析 IK 求解器
+        ik_solver = Solver(
+            joint_limits=joint_limits,
+            dt=self.dt,
+            n_psi=181,
+        )
 
-            if solver is None:
-                log.error("[ERROR] IK solver not initialized")
-                return None
-
-            # solver
-            q = solver.solve(pose.tolist())
-
-            return q.tolist()
-
-        except Exception as e:
-            log.error(f"[ERROR] inverse_kinematics failed: {e}")
-            return None
+        # 机器人的真实状态给 IK 求解器初始化
+        ik_solver.init_state(current_joints)
+        print(f"[{name}] IK Solver 初始化完成！初始关节角: {np.array(current_joints).round(3)}")
+        
+        return ik_solver
     
     # ==================== Gripper (Placeholder) ====================
     
