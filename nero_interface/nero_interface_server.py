@@ -26,11 +26,18 @@ class NeroDualArmServer:
         self.left_robot = None
         
         try:
-            
             from pyAgxArm import create_agx_arm_config, AgxArmFactory
             cfg = create_agx_arm_config(robot="nero", comm="can", channel="can_left")
             self.left_robot = AgxArmFactory.create_arm(cfg)
             self.left_robot.connect()
+
+            # TODO: Initialize left gripper
+            if gripper_enabled:
+                try:
+                    self.left_gripper = self.left_robot.init_effector(self.left_robot.OPTIONS.EFFECTOR.AGX_GRIPPER)
+                except Exception as e:
+                    log.error(f"[SERVER] Failed to initialize left gripper: {e}")
+
             # Enable all joints
             start_t = time.monotonic()
             while not self.left_robot.enable(255):
@@ -51,6 +58,14 @@ class NeroDualArmServer:
             cfg = create_agx_arm_config(robot="nero", comm="can", channel="can_right")
             self.right_robot = AgxArmFactory.create_arm(cfg)
             self.right_robot.connect()
+
+            # TODO: Initialize left gripper
+            if gripper_enabled:
+                try:
+                    self.left_gripper = self.left_robot.init_effector(self.left_robot.OPTIONS.EFFECTOR.AGX_GRIPPER)
+                except Exception as e:
+                    log.error(f"[SERVER] Failed to initialize left gripper: {e}")
+
             # Enable all joints
             start_t = time.monotonic()
             while not self.right_robot.enable(255):
@@ -67,29 +82,29 @@ class NeroDualArmServer:
         log.info("Nero Dual-Arm Server Ready")
         log.info("=" * 50)
 
-        # Initialize left gripper
-        self.left_gripper = None
+        # TODO: Initialize left gripper
+        # self.left_gripper = None
 
-        if gripper_enabled:
-            try:
-                if self.left_gripper is None:
-                    self.left_gripper = self.left_robot.gripper()
-            except Exception as e:
-                log.error(f"[SERVER] Failed to initialize left gripper: {e}")
+        # if gripper_enabled:
+        #     try:
+        #         if self.left_gripper is None:
+        #             self.left_gripper = self.left_robot.gripper()
+        #     except Exception as e:
+        #         log.error(f"[SERVER] Failed to initialize left gripper: {e}")
 
-        # Initialize right gripper
-        self.right_gripper = None
+        # # Initialize right gripper
+        # self.right_gripper = None
         
-        if gripper_enabled:
-            try:
-                if self.right_gripper is None:
-                    self.right_gripper = self.right_robot.gripper()
-            except Exception as e:
-                log.error(f"[SERVER] Failed to initialize right gripper: {e}")
+        # if gripper_enabled:
+        #     try:
+        #         if self.right_gripper is None:
+        #             self.right_gripper = self.right_robot.gripper()
+        #     except Exception as e:
+        #         log.error(f"[SERVER] Failed to initialize right gripper: {e}")
 
-            log.info("=" * 50)
-            log.info("Nero Dual-Gripper Server Ready")
-            log.info("=" * 50)
+        #     log.info("=" * 50)
+        #     log.info("Nero Dual-Gripper Server Ready")
+        #     log.info("=" * 50)
 
         # Initialize right IK solver
         self.left_ik_solver = None
@@ -555,19 +570,129 @@ class NeroDualArmServer:
     
     # ==================== Gripper (Placeholder) ====================
     
-    def left_gripper_initialize(self): pass
-    def left_gripper_goto(self, *args, **kwargs): pass
-    def left_gripper_grasp(self, *args, **kwargs): pass
-    def left_gripper_get_state(self): return {"width": 0.04, "is_moving": False, "is_grasped": False}
-    
-    def right_gripper_initialize(self): pass
-    def right_gripper_goto(self, *args, **kwargs): pass
-    def right_gripper_grasp(self, *args, **kwargs): pass
-    def right_gripper_get_state(self): return {"width": 0.04, "is_moving": False, "is_grasped": False}
-    
-    def gripper_initialize(self):
-        self.left_gripper_initialize()
-        self.right_gripper_initialize()
+    # @Key-Zzs: [feat] gripper_goto and gripper_get_state implementation
+
+    def left_gripper_goto(self, width: float, force: float = 1.0, wait: bool = True):
+        if not self.gripper_enabled or self.left_gripper is None:
+            log.warning("[SERVER] Left gripper not available")
+            return False
+
+        width = float(max(0.0, min(width, 0.1)))
+
+        log.info(f"[SERVER] Left gripper goto: width={width:.3f}, force={force}")
+
+        try:
+            self.left_gripper.move_gripper(width=width, force=force)
+            if wait:
+                time.sleep(1.0)
+            return True
+        except Exception as e:
+            log.error(f"[SERVER] Left gripper goto failed: {e}")
+            return False
+     
+    # TODO: 实现逻辑未确定
+    def left_gripper_grasp(self, force: float = 1.0, width: float = 0.05):
+        if not self.gripper_enabled or self.left_gripper is None:
+            log.warning("[SERVER] Left gripper not available")
+            return False
+
+        width = float(max(0.0, min(width, 0.1)))
+
+        log.info(f"[SERVER] Left gripper grasp: width={width}, force={force}")
+
+        try:
+            self.left_gripper.move_gripper(width=width, force=force)
+            time.sleep(1.5)
+
+            status = self.left_gripper.get_gripper_status()
+            if status is None:
+                return False
+
+            current_width = status.msg.width
+
+            # 抓取判断（核心 heuristic）
+            is_grasped = (width < 0.01) and (current_width > 0.005)
+
+            log.info(f"[SERVER] Left grasp result: width={current_width:.4f}, grasped={is_grasped}")
+
+            return is_grasped
+
+        except Exception as e:
+            log.error(f"[SERVER] Left gripper grasp failed: {e}")
+            return False
+        
+    def left_gripper_get_state(self):
+        if not self.gripper_enabled or self.left_gripper is None:
+            return {"is_moving": False, "is_grasped": False}
+
+        try:
+            status = self.left_gripper.get_gripper_status()
+            if status is None:
+                return {"is_moving": False, "is_grasped": False}
+
+            width = status.msg.width
+            force = status.msg.force
+
+            is_moving = abs(force) > 0.1
+            is_grasped = (width > 0.005) and (force > 0.5)
+
+            return {
+                "width": width,
+                "force": force,
+                "is_moving": is_moving,
+                "is_grasped": is_grasped
+            }
+
+        except Exception as e:
+            log.error(f"[SERVER] Left gripper state failed: {e}")
+            return {"is_moving": False, "is_grasped": False}
+
+    def right_gripper_goto(self, width: float, force: float = 1.0, wait: bool = True):
+        if not self.gripper_enabled or self.right_gripper is None:
+            log.warning("[SERVER] Right gripper not available")
+            return False
+
+        width = float(max(0.0, min(width, 0.1)))
+
+        log.info(f"[SERVER] Right gripper goto: width={width:.3f}, force={force}")
+
+        try:
+            self.right_gripper.move_gripper(width=width, force=force)
+            if wait:
+                time.sleep(1.0)
+            return True
+        except Exception as e:
+            log.error(f"[SERVER] Right gripper goto failed: {e}")
+            return False
+     
+    # TODO: 实现逻辑未确定
+    def right_gripper_grasp(self, force: float = 1.0, width: float = 0.05): pass
+
+    def right_gripper_get_state(self):
+        if not self.gripper_enabled or self.right_gripper is None:
+            return {"is_moving": False, "is_grasped": False}
+
+        try:
+            status = self.right_gripper.get_gripper_status()
+            if status is None:
+                return {"is_moving": False, "is_grasped": False}
+
+            width = status.msg.width
+            force = status.msg.force
+
+            is_moving = abs(force) > 0.1
+            is_grasped = (width > 0.005) and (force > 0.5)
+
+            return {
+                "width": width,
+                "force": force,
+                "is_moving": is_moving,
+                "is_grasped": is_grasped
+            }
+
+        except Exception as e:
+            log.error(f"[SERVER] Right gripper state failed: {e}")
+            return {"is_moving": False, "is_grasped": False}
     
     # ==================== Utility ====================
     
