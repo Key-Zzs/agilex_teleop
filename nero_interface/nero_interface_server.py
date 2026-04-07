@@ -444,7 +444,7 @@ class NeroDualArmServer:
             return True
 
         except Exception as e:
-            log.error(f"[ERROR] servo_j failed: {e}")
+            log.error(f"[ERROR] stop failed: {e}")
             return False
 
 
@@ -559,7 +559,9 @@ class NeroDualArmServer:
     # ==================== Gripper (Placeholder) ====================
     
     # @Key-Zzs: [feat] gripper_goto and gripper_get_state implementation
-
+    # TODO: 重构为非阻塞控制
+    ## def task():
+    ## threading.Thread(target=task, daemon=True).start()
     def left_gripper_goto(self, width: float, force: float = 1.0, wait: bool = True):
         if not self.gripper_enabled or self.left_gripper is None:
             log.warning("[SERVER] Left gripper not available")
@@ -684,16 +686,45 @@ class NeroDualArmServer:
     
     # ==================== Utility ====================
     
-    def stop(self, arm_name: str):
-        if self._robot is None:
-            return
-        self._robot.stop(arm_name)
+    # TODO: wait for testing
+    def stop(self, robot_arm: str):
+        """
+        Stops the specified robot arm by triggering an emergency stop.
+
+        Args:
+            robot_arm (str): The name of the robot arm to stop, either "left_robot" or "right_robot".
+
+        Returns:
+            bool: True if the stop command was executed successfully, False otherwise.
+        """
+        try:
+            if robot_arm == "left_robot":
+                if self.left_robot is not None:
+                    self.left_robot.electronic_emergency_stop()
+                    log.info("[SERVER] Left robot emergency stopped")
+                else:
+                    log.warning("[SERVER] Left robot is not initialized")
+            elif robot_arm == "right_robot":
+                if self.right_robot is not None:
+                    self.right_robot.electronic_emergency_stop()
+                    log.info("[SERVER] Right robot emergency stopped")
+                else:
+                    log.warning("[SERVER] Right robot is not initialized")
+            else:
+                raise ValueError("robot_arm must be 'left_robot' or 'right_robot'")
+
+            return True
+
+        except Exception as e:
+            log.error(f"[ERROR] servo_j failed: {e}")
+            return False
 
 
+# TODO: server start
 def start_server(port: int = 4242, gripper_enabled: bool = True):
-    server = zerorpc.Server(NeroDualArmServer())
+    server = zerorpc.Server(NeroDualArmServer(gripper_enabled))
     server.bind(f"tcp://0.0.0.0:{port}")
-    log.info(f"[SERVER] Listening on port {port}")
+    log.info(f"[SERVER] Listening on tcp://0.0.0.0:{port}")
     server.run()
 
 
