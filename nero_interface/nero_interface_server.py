@@ -31,13 +31,6 @@ class NeroDualArmServer:
             self.left_robot = AgxArmFactory.create_arm(cfg)
             self.left_robot.connect()
 
-            # TODO: Initialize left gripper
-            if gripper_enabled:
-                try:
-                    self.left_gripper = self.left_robot.init_effector(self.left_robot.OPTIONS.EFFECTOR.AGX_GRIPPER)
-                except Exception as e:
-                    log.error(f"[SERVER] Failed to initialize left gripper: {e}")
-
             # Enable all joints
             start_t = time.monotonic()
             while not self.left_robot.enable(255):
@@ -59,13 +52,6 @@ class NeroDualArmServer:
             self.right_robot = AgxArmFactory.create_arm(cfg)
             self.right_robot.connect()
 
-            # TODO: Initialize left gripper
-            if gripper_enabled:
-                try:
-                    self.left_gripper = self.left_robot.init_effector(self.left_robot.OPTIONS.EFFECTOR.AGX_GRIPPER)
-                except Exception as e:
-                    log.error(f"[SERVER] Failed to initialize left gripper: {e}")
-
             # Enable all joints
             start_t = time.monotonic()
             while not self.right_robot.enable(255):
@@ -82,29 +68,31 @@ class NeroDualArmServer:
         log.info("Nero Dual-Arm Server Ready")
         log.info("=" * 50)
 
-        # TODO: Initialize left gripper
-        # self.left_gripper = None
+        # Initialize left gripper
+        # TODO: wait for testing
+        self.left_gripper = None
 
-        # if gripper_enabled:
-        #     try:
-        #         if self.left_gripper is None:
-        #             self.left_gripper = self.left_robot.gripper()
-        #     except Exception as e:
-        #         log.error(f"[SERVER] Failed to initialize left gripper: {e}")
-
-        # # Initialize right gripper
-        # self.right_gripper = None
+        if gripper_enabled:
+            try:
+                if self.left_gripper is None:
+                    self.left_gripper = self.left_robot.init_effector(self.left_robot.OPTIONS.EFFECTOR.AGX_GRIPPER)
+                    log.info("[SERVER] Left gripper initialized")
+            except Exception as e:
+                log.error(f"[SERVER] Failed to initialize left gripper: {e}")
         
-        # if gripper_enabled:
-        #     try:
-        #         if self.right_gripper is None:
-        #             self.right_gripper = self.right_robot.gripper()
-        #     except Exception as e:
-        #         log.error(f"[SERVER] Failed to initialize right gripper: {e}")
+        # Initialize right gripper
+        self.right_gripper = None
 
-        #     log.info("=" * 50)
-        #     log.info("Nero Dual-Gripper Server Ready")
-        #     log.info("=" * 50)
+        if gripper_enabled:
+            try:
+                if self.right_gripper is None:
+                    self.right_gripper = self.right_robot.init_effector(self.right_robot.OPTIONS.EFFECTOR.AGX_GRIPPER)
+            except Exception as e:
+                log.error(f"[SERVER] Failed to initialize right gripper: {e}")
+
+        log.info("=" * 50)
+        log.info("Nero Dual-Gripper Server Ready")
+        log.info("=" * 50)
 
         # Initialize right IK solver
         self.left_ik_solver = None
