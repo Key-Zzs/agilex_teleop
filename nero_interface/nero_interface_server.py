@@ -69,7 +69,6 @@ class NeroDualArmServer:
         log.info("=" * 50)
 
         # Initialize left gripper
-        # TODO: wait for testing
         self.left_gripper = None
 
         if gripper_enabled:
@@ -352,7 +351,7 @@ class NeroDualArmServer:
 
         self.left_robot.set_speed_percent(30)
 
-        home = [0.1, -1.6, 0.0, 2.1, 0.0, 0.0, 1.3]
+        home = [0.0, -0.13, 0.0, 1.87, 0.0, 0.0, -0.17]
 
         log.info("[DEBUG] Moving to home: %s", home)
         self.left_robot.move_j(home)
@@ -400,7 +399,7 @@ class NeroDualArmServer:
         self.right_robot.set_speed_percent(30)
 
         #TODO：not test yet, use 'left_robot_move_to_joint_positions(left_joints_target, delta=False)' to determine
-        home = [0.1, -1.6, 0.0, 2.1, 0.0, 0.0, 1.3]
+        home = [0.0, -0.13, 0.0, 1.87, 0.0, 0.0, -0.17]
 
         log.info("[DEBUG] Moving to home:", home)
         self.left_robot.move_j(home)
@@ -412,14 +411,15 @@ class NeroDualArmServer:
         log.info("已回到初始位置")
 
     # ==================== ServoJ Control (Joint Servo) ====================
-    
-    def servo_j(self, robot_arm: str, joints: list) -> bool:
+
+    def servo_j(self, robot_arm: str, joints: list, delta: bool) -> bool:
         """
         直接输入某个机械臂名称与目标关节角度（度），控制机械臂运动。
 
         Args:
             robot_arm: "left_robot" or "right_robot"
             joints: 7维绝对关节角度（度）
+            delta: 绝对控制(False)，增量控制(True)
 
         Returns:
             bool: 成功返回 True，失败返回 False
@@ -435,9 +435,9 @@ class NeroDualArmServer:
                 joints[i] = np.deg2rad(joints[i])
                 
             if robot_arm == "left_robot":
-                self.left_robot_move_to_joint_positions(joints.tolist(), delta=False)
+                self.left_robot_move_to_joint_positions(joints.tolist(), delta=delta)
             elif robot_arm == "right_robot":
-                self.right_robot_move_to_joint_positions(joints.tolist(), delta=False)
+                self.right_robot_move_to_joint_positions(joints.tolist(), delta=delta)
             else:
                 raise ValueError("robot_arm must be 'left_robot' or 'right_robot'")
 
@@ -446,50 +446,20 @@ class NeroDualArmServer:
         except Exception as e:
             log.error(f"[ERROR] stop failed: {e}")
             return False
-
-
-    def servo_j_delta(self, robot_arm: str, delta_joints: list) -> bool:
-        """
-        直接输入某个机械臂名称与关节角度增量（度），控制机械臂运动。
-
-        Args:
-            robot_arm: "left_robot" or "right_robot"
-            delta_joints: 7维关节角度增量（度）
-
-        Returns:
-            bool: 成功返回 True，失败返回 False
-        """
-        try:
-            delta_joints = np.asarray(delta_joints, dtype=float)
-            if delta_joints.shape[0] != 7:
-                raise ValueError(f"Expected 7 joints, got {delta_joints.shape[0]}")
-
-            log.info(f"[DEBUG] servo_j_delta target (degree): {delta_joints}")
-
-            for i in range(7):
-                delta_joints[i] = np.deg2rad(delta_joints[i])
-
-            if robot_arm == "left_robot":
-                self.left_robot_move_to_joint_positions(delta_joints.tolist(), delta=True)
-            elif robot_arm == "right_robot":
-                self.right_robot_move_to_joint_positions(delta_joints.tolist(), delta=True)
-            else:
-                raise ValueError("robot_arm must be 'left_robot' or 'right_robot'")
-
-            return True
-
-        except Exception as e:
-            log.error(f"[ERROR] servo_j_delta failed: {e}")
-            return False
+        
     
     # ==================== ServoP Control (Pose Servo) ====================
     
     # TODO: scaling for what?
-    def servo_p(self, arm_name: str, pose: list) -> bool:
+    def servo_p(self, robot_arm: str, pose: list, delta: bool) -> bool:
         """
         Send ServoP with target pose [x, y, z, rx, ry, rz] (m, radians).
         Args:
-            pose: Target pose in METERS and RADIANS
+            robot_arm: "left_robot" or "right_robot"
+            pose: 末端位置(m, radians)
+            delta: 绝对控制(False)，增量控制(True)
+        Returns:
+            bool: 成功返回 True，失败返回 False
         """
         if self._robot is None:
             return True
@@ -501,21 +471,6 @@ class NeroDualArmServer:
         ]).tolist()
         return self._robot.servo_p(arm_name, pose_nero)
     
-    def servo_p_delta(self, arm_name: str, delta_pose: list) -> bool:
-        """
-        Send ServoP with RELATIVE pose increments (m, radians).
-        Args:
-            delta_pose: Pose increments in METERS and RADIANS
-        """
-        if self._robot is None:
-            return True
-        # Convert m to mm, radians to degrees for ROS wrapper
-        delta_array = np.array(delta_pose)
-        delta_nero = np.concatenate([
-            delta_array[:3] * 1000,  # m -> mm
-            np.degrees(delta_array[3:])  # rad -> deg
-        ]).tolist()
-        return self._robot.servo_p_delta(arm_name, delta_nero)
     
     # ==================== Inverse Kinematics ====================
     
