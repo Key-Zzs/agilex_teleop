@@ -117,6 +117,9 @@ class NeroDualArmServer:
         self.right_ik_solver = None
         self.track_freq = 20.0
         self.dt = 1.0 / self.track_freq
+        # servo_p 开环控制记录的当前位姿
+        self.left_cur_pose = None
+        self.right_cur_pose = None
 
         try:
             self.left_ik_solver = self.setup_ik_solver(self.left_robot, self.left_cfg, "Left Arm")
@@ -459,7 +462,131 @@ class NeroDualArmServer:
     
     # ==================== ServoP Control (Pose Servo) ====================
 
-    def servo_p(self, robot_arm: str, cur_pose, pose: list, delta: bool) -> bool:
+    def servo_p_OL(self, robot_arm: str, pose: list, delta: bool) -> bool:
+        """
+        Send ServoP open loop with target pose [x, y, z, rx, ry, rz] (m, radians).
+        Args:
+            robot_arm: "left_robot" or "right_robot"
+            pose: 末端位置(m, radians)
+            delta: 绝对控制(False)，增量控制(True)
+        Returns:
+            bool: 成功返回 True，失败返回 False
+        """
+        try:
+            from pyAgxArm.utiles.tf import rot_to_rpy, euler_convert_quat, quat_convert_euler
+            # 1. 选择 robot & IK
+            if robot_arm == "left_robot":
+                robot = self.left_robot
+                ik_solver = self.left_ik_solver
+                cur_pose_attr = "left_cur_pose"
+            elif robot_arm == "right_robot":
+                robot = self.right_robot
+                ik_solver = self.right_ik_solver
+                cur_pose_attr = "right_cur_pose"
+            else:
+                log.error(f"[ERROR] invalid robot_arm: {robot_arm}")
+                return False
+
+            if robot is None or ik_solver is None:
+                log.error("[ERROR] robot or IK solver not ready")
+                return False
+            
+            # 首次调用时，FK 获取当前位姿作为 servo_p 增量控制的基准
+            if getattr(self, cur_pose_attr) is None:
+                # 获取当前真实关节角（带超时保护）
+                current_joints = None
+                timeout = 2.0  # 2秒超时
+                start_t = time.monotonic()
+                while current_joints is None:
+                    ja = robot.get_joint_angles()
+
+                    if ja is not None:
+                        current_joints = ja.msg
+                        break
+                    if time.monotonic() - start_t > timeout:
+                        log.error("[ERROR] get_joint_angles timeout")
+                        return False
+                    time.sleep(0.01)
+
+                q_current = np.array(current_joints, dtype=float)
+                # FK 计算当前位姿
+                T_fk = fk(q_current, ik_solver.nero_params)
+                fk_xyz = np.asarray(T_fk[:3, 3], dtype=float)
+                fk_rpy = np.asarray(rot_to_rpy(T_fk[:3, :3].tolist()), dtype=float)
+                fk_pose = np.concatenate([fk_xyz, fk_rpy])
+                if fk_pose is not None:
+                    setattr(self, cur_pose_attr, fk_pose)
+                else:
+                    log.error("[ERROR] cur_pose is None")
+                    return False
+            
+            # TODO: wait for testing
+            cur_pose = getattr(self, cur_pose_attr)
+            pose = np.asarray(pose, dtype=float).reshape(-1)
+            if pose.size != 6:
+                raise ValueError(f"Expected 6 pose values, got {pose.size}")
+
+            # 2. 计算 target_pose
+            if delta:
+                cur_xyz = np.asarray(cur_pose[:3], dtype=float)
+                cur_rpy = np.asarray(cur_pose[3:], dtype=float)
+                current_pose = np.concatenate([cur_xyz, cur_rpy])
+                
+                print(f"当前位姿: {current_pose}")
+
+                # --- 计算目标位姿 ---
+                # 1. 位置直接相加
+                target_xyz = cur_xyz + np.array(pose[:3], dtype=float)
+
+                # 2. rpy相加转为四元数相乘
+                ## 当前姿态 RPY → 四元数
+                current_quat = euler_convert_quat(cur_rpy[0], cur_rpy[1], cur_rpy[2])
+                ## 增量 RPY → 四元数
+                delta_quat = euler_convert_quat(pose[3], pose[4], pose[5])
+
+                ## 末端姿态增量四元数相乘得到目标姿态四元数
+                target_quat = quat_multiply(current_quat, delta_quat)
+                ## 目标姿态四元数归一化
+                # target_quat = quat_normalize(target_quat) # wait for function
+                q_norm = np.sqrt(target_quat[0]**2 + target_quat[1]**2 + target_quat[2]**2 + target_quat[3]**2)
+                target_quat = tuple(v / q_norm for v in target_quat)
+                ## 目标姿态四元数 → RPY
+                target_rpy = quat_convert_euler(*target_quat)
+                print(f"目标姿态 XYZ: {target_xyz}")
+                print(f"目标姿态 RPY: {target_rpy}")
+
+                # 3. 合并位置和姿态
+                target_pose = np.concatenate([target_xyz, target_rpy])
+            else:
+                # target_pose = np.array(pose, dtype=float)
+                target_pose = pose
+
+            # 3. IK 求解
+            q_cmd = ik_solver.solve(target_pose)
+            print(f"计算出的关节角度: {q_cmd}")
+            print("-------------------------------")
+
+            # 增加对求解失败的安全校验
+            if q_cmd is None or len(q_cmd) == 0:
+                log.error("[ERROR] IK solve failed: returned None/Empty")
+                return False
+
+            if isinstance(q_cmd, np.ndarray):
+                q_cmd = q_cmd.tolist()
+
+            # 4. 下发关节控制
+            robot.move_js(q_cmd)
+
+            # 5. 更新当前位姿
+            setattr(self, cur_pose_attr, target_pose)
+
+            return True
+
+        except Exception as e:
+            log.error(f"[ERROR] servo_p_OL failed", e)
+            return False
+
+    def servo_p(self, robot_arm: str, pose: list, delta: bool) -> bool:
         """
         Send ServoP with target pose [x, y, z, rx, ry, rz] (m, radians).
         Args:
@@ -524,10 +651,6 @@ class NeroDualArmServer:
                 T_fk = fk(q_current, ik_solver.nero_params)
                 fk_xyz = np.asarray(T_fk[:3, 3], dtype=float)
                 fk_rpy = np.asarray(rot_to_rpy(T_fk[:3, :3].tolist()), dtype=float)
-
-                # test1: cur_pose
-                # fk_xyz = np.asarray(cur_pose[:3],dtype=float)
-                # fk_rpy = np.asarray(cur_pose[3:], dtype=float)
                 current_pose = np.concatenate([fk_xyz, fk_rpy])
 
                 # test2: get_tcp_pose
@@ -542,7 +665,8 @@ class NeroDualArmServer:
                 # fk_xyz = T_fk[:3]
                 # fk_rpy = T_fk[3:]
                 # current_pose = T_fk
-                
+
+                print("-------------------------------")
                 print(f"FK当前位姿: {current_pose}")
                 print(f"TCP当前位姿: {tcp_pose.msg}")
                 print(f"Flange当前位姿: {flange_pose.msg}")
@@ -598,7 +722,6 @@ class NeroDualArmServer:
         except Exception as e:
             log.error(f"[ERROR] servo_p failed: %s", e)
             return False
-    
     
     # ==================== Inverse Kinematics ====================
 
