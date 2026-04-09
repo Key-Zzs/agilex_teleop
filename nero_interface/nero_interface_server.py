@@ -432,31 +432,44 @@ class NeroDualArmServer:
             if joints.shape[0] != 7:
                 raise ValueError(f"Expected 7 joints, got {joints.shape[0]}")
             
-            # TODO: wait for testing
+            # 根据 robot_arm 选择对应的机械臂和 get_joint_positions 方法
+            if robot_arm == "left_robot":
+                robot = self.left_robot
+                get_joint_positions = self.left_robot_get_joint_positions()
+            elif robot_arm == "right_robot":
+                robot = self.right_robot
+                get_joint_positions = self.right_robot_get_joint_positions()
+            else:
+                raise ValueError("robot_arm must be 'left_robot' or 'right_robot'")
+            
+            if robot is None:
+                log.error(f"[ERROR] {robot_arm} not initialized")
+                return False
+            
+            # 计算目标关节角度
             if delta:
-                current = np.asarray(self.left_robot_get_joint_positions(), dtype=float)
+                current = np.asarray(get_joint_positions, dtype=float)
+                for i in range(7):
+                    current[i] = np.rad2deg(current[i])
                 target = current + joints
             else:
                 target = joints
 
             log.info(f"[DEBUG] servo_j target (degree): {target}")
             
+            # 转换为弧度
             for i in range(7):
                 target[i] = np.deg2rad(target[i])
             
             target = target.tolist()
 
-            if robot_arm == "left_robot":
-                self.left_robot.move_js(target)
-            elif robot_arm == "right_robot":
-                self.right_robot.move_js(target)
-            else:
-                raise ValueError("robot_arm must be 'left_robot' or 'right_robot'")
+            # 下发关节控制
+            robot.move_js(target)
 
             return True
 
         except Exception as e:
-            log.error(f"[ERROR] stop failed: {e}")
+            log.error(f"[ERROR] servo_j failed: {e}")
             return False
         
     
