@@ -21,7 +21,6 @@ if ROOT_DIR not in sys.path:
 
 from analytic_IK_solver import Solver, build_joint_limits_from_cfg
 from nero_ik.ik_solver import fk
-# from scipy.spatial.transform import Rotation as R
 
 log = logging.getLogger(__name__)
 
@@ -412,6 +411,7 @@ class NeroDualArmServer:
 
     # ==================== ServoJ Control (Joint Servo) ====================
 
+    
     def servo_j(self, robot_arm: str, joints: list, delta: bool) -> bool:
         """
         直接输入某个机械臂名称与目标关节角度（度），控制机械臂运动。
@@ -428,17 +428,25 @@ class NeroDualArmServer:
             joints = np.asarray(joints, dtype=float)
             if joints.shape[0] != 7:
                 raise ValueError(f"Expected 7 joints, got {joints.shape[0]}")
+            
+            # TODO: wait for testing
+            if delta:
+                current = np.asarray(self.left_robot_get_joint_positions(), dtype=float)
+                target = current + joints
+            else:
+                target = joints
 
-            log.info(f"[DEBUG] servo_j target (degree): {joints}")
+            log.info(f"[DEBUG] servo_j target (degree): {target}")
             
             for i in range(7):
-                joints[i] = np.deg2rad(joints[i])
-                
-            # TODO: 改为 move_js
+                target[i] = np.deg2rad(target[i])
+            
+            target = target.tolist()
+
             if robot_arm == "left_robot":
-                self.left_robot_move_to_joint_positions(joints.tolist(), delta=delta)
+                self.left_robot.move_js(target)
             elif robot_arm == "right_robot":
-                self.right_robot_move_to_joint_positions(joints.tolist(), delta=delta)
+                self.right_robot.move_js(target)
             else:
                 raise ValueError("robot_arm must be 'left_robot' or 'right_robot'")
 
