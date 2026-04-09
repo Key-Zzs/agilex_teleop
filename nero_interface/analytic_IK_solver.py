@@ -7,7 +7,7 @@ from pyAgxArm import create_agx_arm_config, AgxArmFactory
 from pyAgxArm.utiles.tf import rpy_to_rot
 
 # 添加 ik_solver 路径
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'robotic_arm_kinematics-main'))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'robotic_arm_kinematics'))
 
 from nero_ik.ik_solver import (
     fk,

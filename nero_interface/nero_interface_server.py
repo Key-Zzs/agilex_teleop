@@ -580,6 +580,7 @@ class NeroDualArmServer:
             # 3. IK 求解
             q_cmd = ik_solver.solve(target_pose)
             print(f"计算出的关节角度: {q_cmd}")
+            print("-------------------------------")
 
             # 增加对求解失败的安全校验 (判断是否返回了 None 或者空数组)
             if q_cmd is None or len(q_cmd) == 0:
