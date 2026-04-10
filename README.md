@@ -28,8 +28,20 @@ pip install -e .
 
 ```bash
 mkdir agile_ws && cd agile_ws
-git clone https://github.com/Key-Zzs/agilex_teleop.git
+git clone --recursive https://github.com/Key-Zzs/agilex_teleop.git
 cd agilex_teleop
+```
+
+如果忘记添加 `--recursive` 选项，需要手动克隆子模块：
+
+```bash
+cd agile_ws/agilex_teleop
+
+# 1. 初始化 submodule 配置
+git submodule init
+
+# 2. 拉取所有 submodule 的实际代码（递归，如果子模块还有子模块）
+git submodule update --recursive
 ```
 
 ### 0.4 安装项目依赖
