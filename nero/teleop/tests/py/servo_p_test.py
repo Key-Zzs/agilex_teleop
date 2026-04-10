@@ -1,5 +1,5 @@
 # %%
-from nero_interface_server import NeroDualArmServer
+from nero.teleop.interface import NeroDualArmServer
 import pdb
 # %%
 import logging
