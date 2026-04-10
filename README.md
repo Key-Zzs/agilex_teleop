@@ -56,6 +56,8 @@ pip install -r requirements.txt
 pip install -e .
 ```
 
+PS: 首次安装后运行 `pip install -r requirements.txt`，如果遇到冲突，可尝试升级 sympy 或降级 torch
+
 #### 方式二：使用 pyproject.toml
 
 ```bash
