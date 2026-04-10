@@ -27,9 +27,9 @@ pip install -e .
 ### 0.3 克隆本项目
 
 ```bash
-mkdir nero_ws && cd nero_ws
-git clone https://github.com/Key-Zzs/AgxArm_teleop.git
-cd AgxArm_teleop
+mkdir agile_ws && cd agile_ws
+git clone https://github.com/Key-Zzs/agilex_teleop.git
+cd agilex_teleop
 ```
 
 ### 0.4 安装项目依赖
@@ -135,3 +135,8 @@ AgxArm_teleop/
 | Nero 首次使用 CAN 指南 | [docs/nero/first_time_user_guide_can.md](./docs/nero/first_time_user_guide_can.md#nero-首次使用指南can) |
 | Nero API | [docs/nero/nero_api.md](./docs/nero/nero_api.md#nero-机械臂-api-使用文档) |
 | AgxGripper API | [docs/effector/agx_gripper/agx_gripper_api.md](./docs/effector/agx_gripper/agx_gripper_api.md#agxgripper-夹爪-api-使用文档) |
+
+
+## 来源
+
+本仓库基于 [pyAgxArm](https://github.com/agilexrobotics/pyAgxArm.git) 的代码开发，在此表示感谢。

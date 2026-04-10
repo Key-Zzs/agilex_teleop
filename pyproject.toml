@@ -3,12 +3,12 @@ requires = ["setuptools >= 40.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "AgxArm_teleop"
+name = "agilex_teleop"
 version = "1.0.0"
-description = "Agilex arm control and Nero dual-arm teleoperation"
+description = "Agilex nero arm control and teleoperation"
 readme = { file = "README.md", content-type = "text/markdown" }
 authors = [
-    { name = "Key-Zzs", url = "https://github.com/Key-Zzs/AgxArm_teleop" }
+    { name = "Key-Zzs", url = "https://github.com/Key-Zzs/agilex_teleop" }
 ]
 license = { text = "MIT License" }
 requires-python = ">=3.10"
@@ -35,8 +35,8 @@ dynamics = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/Key-Zzs/AgxArm_teleop"
-Repository = "https://github.com/Key-Zzs/AgxArm_teleop"
+Homepage = "https://github.com/Key-Zzs/agilex_teleop"
+Repository = "https://github.com/Key-Zzs/agilex_teleop"
 
 [tool.setuptools.packages.find]
 where = ["."]
