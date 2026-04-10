@@ -7,11 +7,11 @@ Nero 机械臂双臂遥操作系统，基于 Agilex 机械臂 SDK 开发。
 ### 0.1 创建 Conda 虚拟环境
 
 ```bash
-# 创建名为 agxarm 的 Python 3.10 环境
-conda create -n agxarm python=3.10 -y
+# 创建名为 agilex_teleop 的 Python 3.10 环境
+conda create -n agilex_teleop python=3.10 -y
 
 # 激活环境
-conda activate agxarm
+conda activate agilex_teleop
 ```
 
 ### 0.2 克隆 lerobot 项目并安装 lerobot 框架
