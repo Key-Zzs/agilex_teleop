@@ -32,22 +32,49 @@ class NeroDualArmClient:
         """Get left arm joint positions (radians)."""
         if self.server is None:
             return np.zeros(7)
-        # Server returns radians
         return np.array(self.server.left_robot_get_joint_positions())
+    
+    def left_robot_get_joint_velocities(self) -> np.ndarray:
+        """Get left arm joint velocities (rad/s)."""
+        if self.server is None:
+            return np.zeros(7)
+        return np.array(self.server.left_robot_get_joint_velocities())
+    
+    def left_robot_get_arm_status(self) -> dict:
+        """Get left arm status."""
+        if self.server is None:
+            return {"ctrl_mode": 0, "arm_status": 0, "motion_status": 0}
+        return self.server.left_robot_get_arm_status()
     
     def right_robot_get_joint_positions(self) -> np.ndarray:
         """Get right arm joint positions (radians)."""
         if self.server is None:
             return np.zeros(7)
-        # Server returns radians
         return np.array(self.server.right_robot_get_joint_positions())
+    
+    def right_robot_get_joint_velocities(self) -> np.ndarray:
+        """Get right arm joint velocities (rad/s)."""
+        if self.server is None:
+            return np.zeros(7)
+        return np.array(self.server.right_robot_get_joint_velocities())
+    
+    def right_robot_get_arm_status(self) -> dict:
+        """Get right arm status."""
+        if self.server is None:
+            return {"ctrl_mode": 0, "arm_status": 0, "motion_status": 0}
+        return self.server.right_robot_get_arm_status()
     
     def left_robot_get_ee_pose(self) -> np.ndarray:
         """Get left arm EE pose [x, y, z, rx, ry, rz] (m, radians)."""
         if self.server is None:
             return np.zeros(6)
-        # Server returns meters and radians
         return np.array(self.server.left_robot_get_ee_pose())
+    
+    def right_robot_get_ee_pose(self) -> np.ndarray:
+        """Get right arm EE pose [x, y, z, rx, ry, rz] (m, radians)."""
+        if self.server is None:
+            return np.zeros(6)
+        return np.array(self.server.right_robot_get_ee_pose())
     
     def right_robot_get_ee_pose(self) -> np.ndarray:
         """Get right arm EE pose [x, y, z, rx, ry, rz] (m, radians)."""
@@ -110,109 +137,75 @@ class NeroDualArmClient:
     
     # ==================== ServoJ Control (Joint Servo) ====================
     
-    def servo_j(self, arm_name: str, joints: np.ndarray, t: float = 0.1,
-                lookahead_time: float = 0.05, gain: float = 300) -> bool:
+    def servo_j(self, robot_arm: str, joints: np.ndarray, delta: bool = False) -> bool:
         """
-        Send ServoJ with ABSOLUTE joint angles (radians).
+        Send ServoJ with joint angles.
         Args:
+            robot_arm: 'left_robot' or 'right_robot'
             joints: Joint angles in RADIANS
+            delta: False=absolute, True=relative
         """
         if self.server is None:
             return True
-        # Server expects radians
-        return self.server.servo_j(arm_name, joints.tolist(), t, lookahead_time, gain)
-    
-    def servo_j_delta(self, arm_name: str, delta_joints: np.ndarray, t: float = 0.1,
-                      lookahead_time: float = 0.05, gain: float = 300) -> bool:
-        """
-        Send ServoJ with RELATIVE joint increments (radians).
-        Args:
-            delta_joints: Joint increments in RADIANS
-        """
-        if self.server is None:
-            return True
-        # Server expects radians
-        return self.server.servo_j_delta(arm_name, delta_joints.tolist(), t, lookahead_time, gain)
+        return self.server.servo_j(robot_arm, joints.tolist(), delta)
     
     # ==================== ServoP Control (Pose Servo) ====================
     
-    def servo_p(self, arm_name: str, pose: np.ndarray) -> bool:
+    def servo_p(self, robot_arm: str, pose: np.ndarray, delta: bool = False) -> bool:
         """
         Send ServoP with target pose [x, y, z, rx, ry, rz] (m, radians).
         Args:
+            robot_arm: 'left_robot' or 'right_robot'
             pose: Target pose in METERS and RADIANS
+            delta: False=absolute, True=relative
         """
         if self.server is None:
             return True
-        # Server expects meters and radians
-        return self.server.servo_p(arm_name, pose.tolist())
+        return self.server.servo_p(robot_arm, pose.tolist(), delta)
     
-    def servo_p_delta(self, arm_name: str, delta_pose: np.ndarray) -> bool:
+    def servo_p_OL(self, robot_arm: str, pose: np.ndarray, delta: bool = False) -> bool:
         """
-        Send ServoP with RELATIVE pose increments (m, radians).
+        Send ServoP open loop with target pose [x, y, z, rx, ry, rz] (m, radians).
         Args:
-            delta_pose: Pose increments in METERS and RADIANS
+            robot_arm: 'left_robot' or 'right_robot'
+            pose: Target pose in METERS and RADIANS
+            delta: False=absolute, True=relative
         """
         if self.server is None:
             return True
-        # Server expects meters and radians
-        return self.server.servo_p_delta(arm_name, delta_pose.tolist())
+        return self.server.servo_p_OL(robot_arm, pose.tolist(), delta)
     
-    # ==================== Inverse Kinematics ====================
+    # ==================== Gripper ========
     
-    def inverse_kinematics(self, arm_name: str, pose: np.ndarray, 
-                          current_joints: np.ndarray = None) -> Optional[list]:
-        """
-        Solve IK using Nero controller.
-        Args:
-            arm_name: 'left' or 'right'
-            pose: Target pose [x, y, z, rx, ry, rz] (m, radians)
-            current_joints: Current joints for reference (radians)
-        Returns:
-            Joint angles (radians) or None if failed
-        """
-        if self.server is None:
-            return [0.0] * 7
-        # Server expects meters and radians, returns radians
-        pose_list = pose.tolist() if hasattr(pose, 'tolist') else list(pose)
-        joints_list = current_joints.tolist() if current_joints is not None and hasattr(current_joints, 'tolist') else current_joints
-        return self.server.inverse_kinematics(arm_name, pose_list, joints_list)
-    
-    # ==================== Gripper ====================
-    
-    def left_gripper_initialize(self):
+    def left_gripper_goto(self, width: float, force: float, wait: bool = True):
         if self.server is None:
             return
-        self.server.left_gripper_initialize()
+        self.server.left_gripper_goto(width, force, wait)
     
-    def left_gripper_goto(self, width: float, speed: float, force: float):
+    def left_gripper_grasp(self, force: float = 1.0, width: float = 0.05):
         if self.server is None:
             return
-        self.server.left_gripper_goto(width, speed, force)
+        self.server.left_gripper_grasp(force, width)
+    
+    def right_gripper_grasp(self, force: float = 1.0, width: float = 0.05):
+        if self.server is None:
+            return
+        self.server.right_gripper_grasp(force, width)
     
     def left_gripper_get_state(self) -> dict:
         if self.server is None:
             return {"width": 0.04, "is_moving": False, "is_grasped": False}
         return self.server.left_gripper_get_state()
     
-    def right_gripper_initialize(self):
+    def right_gripper_goto(self, width: float, force: float, wait: bool = True):
         if self.server is None:
             return
-        self.server.right_gripper_initialize()
-    
-    def right_gripper_goto(self, width: float, speed: float, force: float):
-        if self.server is None:
-            return
-        self.server.right_gripper_goto(width, speed, force)
+        self.server.right_gripper_goto(width, force, wait)
     
     def right_gripper_get_state(self) -> dict:
         if self.server is None:
             return {"width": 0.04, "is_moving": False, "is_grasped": False}
         return self.server.right_gripper_get_state()
-    
-    def gripper_initialize(self):
-        self.left_gripper_initialize()
-        self.right_gripper_initialize()
     
     # ==================== Utility ====================
     
