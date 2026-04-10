@@ -17,8 +17,8 @@ from lerobot.cameras import make_cameras_from_configs
 from lerobot.utils.errors import DeviceNotConnectedError, DeviceAlreadyConnectedError
 from lerobot.robots.robot import Robot
 
-from config_nero import NeroDualArmConfig
-from nero_interface_client import NeroDualArmClient
+from nero.teleop.nero_teleop_config import NeroDualArmConfig
+from nero.teleop.interface.nero_interface_client import NeroDualArmClient
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)

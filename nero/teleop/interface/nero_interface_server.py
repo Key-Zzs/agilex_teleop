@@ -15,12 +15,12 @@ import pdb
 # ROOT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "."))
 # sys.path.insert(0, ROOT_DIR)
 
-ROOT_DIR = os.path.abspath(os.path.dirname(__file__))
-if ROOT_DIR not in sys.path:
-    sys.path.insert(0, ROOT_DIR)
+# ROOT_DIR = os.path.abspath(os.path.dirname(__file__))
+# if ROOT_DIR not in sys.path:
+#     sys.path.insert(0, ROOT_DIR)
 
 from nero.kinematics.analytic_IK_solver import Solver
-from nero_ik.ik_solver import fk
+from nero.kinematics.nero_kinematics.nero_ik.ik_solver import fk
 
 log = logging.getLogger(__name__)
 
