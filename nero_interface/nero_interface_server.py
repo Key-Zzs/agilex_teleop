@@ -123,7 +123,7 @@ class NeroDualArmServer:
 
         try:
             self.left_ik_solver = self.setup_ik_solver(self.left_robot, self.left_cfg, "Left Arm")
-            # self.right_ik_solver = self.setup_ik_solver(self.right_robot, self.right_cfg, "Right Arm")
+            self.right_ik_solver = self.setup_ik_solver(self.right_robot, self.right_cfg, "Right Arm")
         except Exception as e:
             log.error(f"[ERROR] IK solvers init failed: {e}")
 
@@ -245,7 +245,6 @@ class NeroDualArmServer:
         if self.left_robot is None:
             return
         
-        # @Key-Zzs: fix TypeError
         pose = np.asarray(pose, dtype=float)
         if pose.shape[0] != 6:
             raise ValueError(f"Expected 6 joints, got {pose.shape[0]}")
@@ -267,7 +266,7 @@ class NeroDualArmServer:
 
     # ==================== Right Arm Motion ====================
     
-    # @Key-Zzs: copy from left_robot_move_to_joint_positions() and left_robot_move_to_ee_pose() 
+    # same as left_robot_move_to_joint_positions() and left_robot_move_to_ee_pose() 
     def right_robot_move_to_joint_positions(self, positions: list, delta: bool = False):
         """Move right arm to joint positions (radians)."""
         if self.right_robot is None:
@@ -309,12 +308,11 @@ class NeroDualArmServer:
         log.info("move to end-effector pose completed")
 
     # TODO
-    # def dual_robot_move_to_ee_pose(self, left_pose: list, right_pose: list, delta: bool = False):
-    #     if self._robot is None:
-    #         return
-    #     self._robot.dual_move_to_ee_pose(left_pose, right_pose, delta=delta, wait=True)
-    
-    # ==================== Go Home ====================
+    def dual_robot_move_to_ee_pose(self, left_pose: list, right_pose: list, delta: bool = False):
+        if self.left_robot is None or self.right_robot is None:
+            return
+        self.left_robot_move_to_ee_pose(left_pose, delta=delta, wait=True)
+        self.right_robot_move_to_ee_pose(right_pose, delta=delta, wait=True)
 
     # @Key-Zzs: [feat] left_robot_go_home() and right_robot_go_home()
     def left_robot_go_home(self):
@@ -411,6 +409,12 @@ class NeroDualArmServer:
 
         time.sleep(3.0)  # 等待运动完成
         log.info("已回到初始位置")
+
+    def robot_go_home(self):
+        if self.left_robot is None or self.right_robot is None:
+            return
+        self.left_robot_go_home()
+        self.right_robot_go_home()
 
     # ==================== ServoJ Control (Joint Servo) ====================
 
@@ -738,12 +742,18 @@ class NeroDualArmServer:
     
     # ==================== Inverse Kinematics ====================
 
-    def setup_ik_solver(self, robot, cfg, name: str):
+    def setup_ik_solver(self, robot, cfg, name: str, timeout_sec: float = 5.0):
         """辅助方法：获取初始关节角，提取限位，并初始化 IK Solver"""
         print(f"[{name}] 正在获取当前关节角作为 IK 初始基准...")
         current_pose = None
         current_joints = None
+        start_t = time.monotonic()
         while current_pose is None or current_joints is None:
+            if time.monotonic() - start_t > timeout_sec:
+                log.warning(f"[{name}] get flange/joint pose timeout after {timeout_sec}s, using default pose")
+                current_pose = [0.0] * 6
+                current_joints = [0.0] * 7
+                break
             fp = robot.get_flange_pose()
             ja = robot.get_joint_angles()
             if fp is not None: current_pose = fp.msg
@@ -932,18 +942,20 @@ class NeroDualArmServer:
             log.error(f"[ERROR] servo_j failed: {e}")
             return False
 
-def start_server(port: int = 4242, gripper_enabled: bool = True):
+def start_server(ip: str, port: int = 4242, gripper_enabled: bool = True):
     server = zerorpc.Server(NeroDualArmServer(gripper_enabled))
-    server.bind(f"tcp://0.0.0.0:{port}")
-    log.info(f"[SERVER] Listening on tcp://0.0.0.0:{port}")
+    server.bind(f"tcp://{ip}:{port}")
+    # server.bind(f"tcp://0.0.0.0:4242")
+    log.info(f"[SERVER] Listening on tcp://{ip}:{port}")
     server.run()
 
 # TODO: test server
 if __name__ == '__main__':
     import argparse
     parser = argparse.ArgumentParser()
+    parser.add_argument('--ip', type=str, default='0.0.0.0')
     parser.add_argument('--port', type=int, default=4242)
     parser.add_argument('--no-gripper', action='store_true')
     args = parser.parse_args()
     logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(message)s')
-    start_server(port=args.port, gripper_enabled=not args.no_gripper)
+    start_server(ip=args.ip, port=args.port, gripper_enabled=not args.no_gripper)
