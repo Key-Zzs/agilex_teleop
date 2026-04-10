@@ -1,178 +1,137 @@
-# pyAgxArm User Guide
+# AgxArm_teleop
 
-> `pyAgxArm` is a Python SDK for AgileX robotic arms and end effectors. It supports CAN communication, status reading, motion control, and end-effector control for Piper, Nero, AgxGripper, and Revo2.
+Nero 机械臂双臂遥操作系统，基于 Agilex 机械臂 SDK 开发。
 
-## Table of Contents
+## 0 环境配置
 
-- [Switch to 中文](#pyagxarm-使用说明)
-- [Introduction](#pyagxarm-user-guide)
-- [Environment](#environment)
-- [Documentation](#documentation)
-- [Install](#install)
-- [Communication Setup](#communication-setup)
-- [Quick Start](#quick-start)
-- [Notes](#notes)
-- [Contact](#contact)
+### 0.1 创建 Conda 虚拟环境
 
+```bash
+# 创建名为 agxarm 的 Python 3.10 环境
+conda create -n agxarm python=3.10 -y
 
-### Environment
-
-- Ubuntu: `18.04 / 20.04 / 22.04 / 24.04`
-- Python: `3.6` and above (compatible up to `3.14`)
-
-### Documentation
-
-| Topic | Link |
-| --- | --- |
-| ROS | [agx_arm_ros](https://github.com/agilexrobotics/agx_arm_ros) |
-| CAN module manual | [docs/can_user.md](./docs/can_user.md#can-module-manual) |
-| Piper API | [docs/piper/piper_api.md](./docs/piper/piper_api.md#piper-api-documentation) |
-| Nero API | [docs/nero/nero_api.md](./docs/nero/nero_api.md#nero-api-documentation) |
-| AgxGripper API | [docs/effector/agx_gripper/agx_gripper_api.md](./docs/effector/agx_gripper/agx_gripper_api.md#agxgripper-api-documentation) |
-| Revo2 API | [docs/effector/revo2/revo2_api.md](./docs/effector/revo2/revo2_api.md#revo2-api-documentation) |
-| Nero first-time CAN guide | [docs/nero/first_time_user_guide_can.md](./docs/nero/first_time_user_guide_can.md#nero-first-time-user-guide-can) |
-| Ubuntu 24.04 pip guide | [docs/ubuntu_24_04_pip_install.md](./docs/ubuntu_24_04_pip_install.md#ubuntu-2404-pip-installation-guide) |
-| Q&A | [docs/Q&A.md](./docs/Q&A.md#qa) |
-| Changelog | [CHANGELOG.md](./CHANGELOG.md#changelog) |
-| Demos | [pyAgxArm/demos](./pyAgxArm/demos) |
-
-### Install
-
-```shell
-pip3 install python-can
+# 激活环境
+conda activate agxarm
 ```
 
-`python-can` should be newer than `3.3.4`.
-
-```shell
-git clone https://github.com/agilexrobotics/pyAgxArm.git
-cd pyAgxArm
-pip3 install .
+### 0.2 克隆 lerobot 项目并安装 lerobot 框架
+```bash
+# 安装指定版本 0.3.4
+# git checkout da5d2f3e9187fa4690e6667fe8b294cae49016d6
+git clone https://github.com/huggingface/lerobot.git
+cd lerobot
+git checkout da5d2f3e9187fa4690e6667fe8b294cae49016d6
+pip install -e .
 ```
 
-Ubuntu 24.04 users can also refer to:
-[docs/ubuntu_24_04_pip_install.md](./docs/ubuntu_24_04_pip_install.md#ubuntu-2404-pip-installation-guide)
+### 0.3 克隆本项目
 
-### Communication Setup
-
-See:
-[docs/can_user.md](./docs/can_user.md#can-module-manual)
-
-### Quick Start
-
-```python
-import time
-from pyAgxArm import create_agx_arm_config, AgxArmFactory
-
-cfg = create_agx_arm_config(robot="nero", comm="can", channel="can0")
-robot = AgxArmFactory.create_arm(cfg)
-robot.connect()
-
-while True:
-    ja = robot.get_joint_angles()
-    if ja is not None:
-        print(ja.msg)
-        print(ja.hz, ja.timestamp)
-    time.sleep(0.005)
+```bash
+mkdir nero_ws && cd nero_ws
+git clone https://github.com/Key-Zzs/AgxArm_teleop.git
+cd AgxArm_teleop
 ```
 
-### Notes
+### 0.4 安装项目依赖
 
-- Activate CAN first and configure the correct bitrate before reading or controlling the arm.
-- Use `channel` in `create_agx_arm_config()` to pass your activated CAN interface name.
-- MIT single-joint control is an advanced feature; improper use may damage the robot.
+#### 方式一：使用 requirements.txt（推荐）
 
-### Contact
+```bash
+# 安装所有依赖
+pip install -r requirements.txt
 
-- GitHub Issues
-- Discord: <https://discord.gg/wrKYTxwDBd>
+# 安装项目（开发模式）
+pip install -e .
+```
 
----
+#### 方式二：使用 pyproject.toml
 
-# pyAgxArm 使用说明
+```bash
+# 基础安装
+pip install -e .
 
-> `pyAgxArm` 是 AgileX 机械臂与末端执行器的 Python SDK，支持 CAN 通信、状态读取、运动控制，以及 Piper、Nero、AgxGripper、Revo2 等设备的接口调用。
+# 包含仿真功能
+pip install -e ".[sim]"
 
-## 目录
+# 包含动力学功能
+pip install -e ".[dynamics]"
 
-- [切换到 English](#pyagxarm-user-guide)
-- [简介](#pyagxarm-使用说明)
-- [环境支持](#环境支持)
-- [文档入口](#文档入口)
-- [安装方法](#安装方法)
-- [通信激活](#通信激活)
-- [快速开始](#快速开始)
-- [注意事项](#注意事项)
-- [联系我们](#联系我们)
+# 全部功能
+pip install -e ".[sim,dynamics]"
+```
 
-## 环境支持
+### 4. 安装 Pinocchio（可选）
 
-- Ubuntu：`18.04 / 20.04 / 22.04 / 24.04`
-- Python：`3.6` 及以上（目前适配至 `3.14`）
+Pinocchio 依赖较多，如果 `requirements.txt` 安装失败，可使用 conda-forge：
 
-## 文档入口
+```bash
+conda install -c conda-forge pinocchio eigenpy -y
+```
+
+
+
+## 1 快速开始
+
+### 1.1 激活 CAN 设备
+
+详见：
+[docs/can_user.md](./docs/can_user.md#can-模块使用手册)
+
+### 1.2 运行 nero 测试脚本
+
+```bash
+# nero 关节重置脚本
+python nero/tests/reset.py
+# nero 位置跟随 IK 测试脚本
+python nero/tests/test_pos_flw_ik.py
+```
+
+## 2 启动遥操作服务
+
+### 2.1 开启机械臂 server 服务端
+
+```bash
+# 开放端口 4242
+udo iptables -I INPUT -p tcp --dport 4242 -j ACCEPT
+# 启动机械臂 tcp 通信服务
+python nero/teleop/interface/nero_interface_server.py --ip 0.0.0.0 --port 4242
+# 确定 server 端 ip
+ifconfig
+```
+
+### 2.2 遥操作端
+
+## 注意事项
+
+1. **安全警告**：运行重置脚本时，机械臂会瞬间失去力矩，务必用手扶稳！
+2. **CAN 通信**：确保 CAN 接口正确配置（如 `can_left`, `can_right`）
+3. **权限问题**：Linux 下可能需要设置 CAN 接口权限：
+   ```bash
+   sudo ip link set can0 up type can bitrate 1000000
+   ```
+
+## 项目结构
+
+```
+AgxArm_teleop/
+├── pyAgxArm/              # Agilex 机械臂 SDK
+│   ├── api/               # API 接口
+│   ├── protocols/         # 通信协议
+│   └── utiles/            # 工具函数
+├── nero/                  # Nero 双臂系统
+│   ├── kinematics/        # 运动学
+│   ├── teleop/            # 遥操作
+│   └── tests/             # 测试脚本
+├── requirements.txt       # 依赖列表
+└── pyproject.toml         # 项目配置
+```
+
+## 开发人员资料
 
 | 说明 | 文档 |
 | --- | --- |
 | ROS | [agx_arm_ros](https://github.com/agilexrobotics/agx_arm_ros) |
 | CAN 模块手册 | [docs/can_user.md](./docs/can_user.md#can-模块使用手册) |
-| Piper API | [docs/piper/piper_api.md](./docs/piper/piper_api.md#piper-机械臂-api-使用文档) |
+| Nero 首次使用 CAN 指南 | [docs/nero/first_time_user_guide_can.md](./docs/nero/first_time_user_guide_can.md#nero-首次使用指南can) |
 | Nero API | [docs/nero/nero_api.md](./docs/nero/nero_api.md#nero-机械臂-api-使用文档) |
 | AgxGripper API | [docs/effector/agx_gripper/agx_gripper_api.md](./docs/effector/agx_gripper/agx_gripper_api.md#agxgripper-夹爪-api-使用文档) |
-| Revo2 API | [docs/effector/revo2/revo2_api.md](./docs/effector/revo2/revo2_api.md#revo2-灵巧手-api-使用文档) |
-| Nero 首次使用 CAN 指南 | [docs/nero/first_time_user_guide_can.md](./docs/nero/first_time_user_guide_can.md#nero-首次使用指南can) |
-| Ubuntu 24.04 pip 安装说明 | [docs/ubuntu_24_04_pip_install.md](./docs/ubuntu_24_04_pip_install.md#ubuntu-2404-安装第三方-pip-包的方法) |
-| Q&A | [docs/Q&A.md](./docs/Q&A.md#常见问题) |
-| 更新日志 | [CHANGELOG.md](./CHANGELOG.md#更新日志) |
-| 示例代码 | [pyAgxArm/demos](./pyAgxArm/demos) |
-
-## 安装方法
-
-```shell
-pip3 install python-can
-```
-
-`python-can` 版本应高于 `3.3.4`。
-
-```shell
-git clone https://github.com/agilexrobotics/pyAgxArm.git
-cd pyAgxArm
-pip3 install .
-```
-
-Ubuntu 24.04 可参考：
-[docs/ubuntu_24_04_pip_install.md](./docs/ubuntu_24_04_pip_install.md#ubuntu-2404-安装第三方-pip-包的方法)
-
-## 通信激活
-
-详见：
-[docs/can_user.md](./docs/can_user.md#can-模块使用手册)
-
-## 快速开始
-
-```python
-import time
-from pyAgxArm import create_agx_arm_config, AgxArmFactory
-
-cfg = create_agx_arm_config(robot="nero", comm="can", channel="can0")
-robot = AgxArmFactory.create_arm(cfg)
-robot.connect()
-
-while True:
-    ja = robot.get_joint_angles()
-    if ja is not None:
-        print(ja.msg)
-        print(ja.hz, ja.timestamp)
-    time.sleep(0.005)
-```
-
-## 注意事项
-
-- 使用 CAN 协议时，需要先激活 CAN 设备并设置正确波特率。
-- `create_agx_arm_config()` 可通过 `channel` 参数传入激活后的 CAN 名称。
-- MIT 单关节控制属于高级功能，使用不当可能损坏机械臂。
-
-## 联系我们
-
-- GitHub：提 issue
-- Discord：<https://discord.gg/wrKYTxwDBd>

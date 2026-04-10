@@ -3,39 +3,47 @@ requires = ["setuptools >= 40.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "pyAgxArm"
+name = "AgxArm_teleop"
 version = "1.0.0"
-description = "A SDK to control Agilex arms"
+description = "Agilex arm control and Nero dual-arm teleoperation"
 readme = { file = "README.md", content-type = "text/markdown" }
 authors = [
-    { name = "Rosen Yin", email = "yinruocheng321@gmail.com" }
+    { name = "Key-Zzs", url = "https://github.com/Key-Zzs/AgxArm_teleop" }
 ]
 license = { text = "MIT License" }
-requires-python = ">=3.6"
+requires-python = ">=3.10"
 dependencies = [
+    "numpy==2.3.5",
+    "scipy==1.17.1",
+    "zerorpc>=0.6.1",
     "python-can>=3.3.4",
     "typing-extensions>=3.7.4.3",
+    "PyYAML==6.0.3",
 ]
-classifiers = [
-    "Programming Language :: Python :: 3",
-    "Operating System :: POSIX :: Linux",
-    "License :: OSI Approved :: MIT License"
+
+[project.optional-dependencies]
+sim = [
+    "pybullet==3.2.7",
+    "ikpy==3.4.2",
+    "meshcat==0.3.2",
+]
+dynamics = [
+    "pinocchio>=3.0.0",
+    "placo>=0.1.0",
+    "eigenpy==3.12.0",
+    "eiquadprog==1.3.0",
 ]
 
 [project.urls]
-Homepage = "https://github.com/agilexrobotics/pyAgxArm"
-Repository = "https://github.com/agilexrobotics/pyAgxArm"
-ChangeLog = "https://github.com/agilexrobotics/pyAgxArm/blob/master/CHANGELOG.md"
+Homepage = "https://github.com/Key-Zzs/AgxArm_teleop"
+Repository = "https://github.com/Key-Zzs/AgxArm_teleop"
 
 [tool.setuptools.packages.find]
-include = [
-    "pyAgxArm",
-    "pyAgxArm.*",
-]
+where = ["."]
+include = ["pyAgxArm*", "nero*"]
 
 [tool.setuptools.package-data]
-"pyAgxArm" = ["py.typed", "*"]
+pyAgxArm = ["py.typed", "*"]
 
 [tool.setuptools]
 include-package-data = true
-
