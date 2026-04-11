@@ -188,24 +188,24 @@ class NeroDualArmClient:
             return
         self.server.left_gripper_grasp(force, width)
     
-    def right_gripper_grasp(self, force: float = 1.0, width: float = 0.05):
-        if self.server is None:
-            return
-        self.server.right_gripper_grasp(force, width)
-    
     def left_gripper_get_state(self) -> dict:
         if self.server is None:
-            return {"width": 0.04, "is_moving": False, "is_grasped": False}
+            return {"width": 0.0, "is_moving": False, "is_grasped": False}
         return self.server.left_gripper_get_state()
     
     def right_gripper_goto(self, width: float, force: float, wait: bool = True):
         if self.server is None:
             return
         self.server.right_gripper_goto(width, force, wait)
+
+    def right_gripper_grasp(self, force: float = 1.0, width: float = 0.05):
+        if self.server is None:
+            return
+        self.server.right_gripper_grasp(force, width)    
     
     def right_gripper_get_state(self) -> dict:
         if self.server is None:
-            return {"width": 0.04, "is_moving": False, "is_grasped": False}
+            return {"width": 0.0, "is_moving": False, "is_grasped": False}
         return self.server.right_gripper_get_state()
     
     # ==================== Utility ====================
