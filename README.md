@@ -88,6 +88,97 @@ conda install -c conda-forge pinocchio eigenpy -y
 
 ### 1.1 激活 CAN 设备
 
+#### 1.1.1 激活单个 CAN 模块
+
+> 使用 `can_activate.sh` 脚本
+
+1. 查看 USB 端口硬件地址
+
+   拔掉所有 CAN 模块，只将连接到机械臂的 CAN 模块插入 PC，执行：
+
+   ```shell
+   bash find_all_can_port.sh
+   ```
+
+   记录下 `USB port` 的数值，例如 `3-1.4:1.0`。
+
+2. 激活 CAN 设备
+
+   假设上面的 `USB port` 数值为 `3-1.4:1.0`，执行：
+
+   ```bash
+   bash can_activate.sh can_piper 1000000 "3-1.4:1.0"
+   ```
+
+   含义：将硬件编码为 `3-1.4:1.0` 的 USB 端口上的 CAN 设备重命名为 `can_piper`，设定波特率为 `1000000`，并激活。
+
+3. 检查是否激活成功
+
+   执行 `ifconfig` 查看是否有 `can_piper`，如果有则 CAN 模块设置成功。
+
+> 简化用法（单模块）
+> 如果电脑只插入了一个 CAN 模块，可以直接执行：
+
+```bash
+bash can_activate.sh can0 1000000
+```
+
+#### 1.1.2 同时激活多个 CAN 模块
+
+> 使用 `can_muti_activate.sh` 脚本
+
+首先确定有多少个官方 CAN 模块被插入到电脑（以下示例假设为 2 个）。
+
+> **提示：** 若当前电脑插入了 5 个 CAN 模块，也可以只激活指定的 CAN 模块。
+
+1. 记录每个 CAN 模块对应的 USB 端口硬件地址
+
+   逐个拔插 CAN 模块并一一记录每个模块对应的 USB 端口硬件地址。
+
+   在 `can_muti_activate.sh` 中，`USB_PORTS` 参数中元素的数量为预激活的 CAN 模块数量。
+
+   1. 将其中一个 CAN 模块单独插入 PC，执行：
+
+      ```shell
+      bash find_all_can_port.sh
+      ```
+
+      记录下 `USB port` 的数值，例如 `3-1.4:1.0`。
+
+   2. 接着插入下一个 CAN 模块（**不可以**与上次插入的 USB 口相同），执行：
+
+      ```shell
+      bash find_all_can_port.sh
+      ```
+
+      记录下第二个 CAN 模块的 `USB port` 数值，例如 `3-1.1:1.0`。
+
+      > **提示：** 如果未曾激活过，则第一个插入的 CAN 模块默认为 `can0`，第二个为 `can1`；若激活过，名字为之前激活过的名称。
+
+2. 预定义 USB 端口、目标接口名称及波特率
+
+   假设上面记录的 `USB port` 数值分别为 `3-1.4:1.0` 和 `3-1.1:1.0`，则将 `can_muti_activate.sh` 中的参数修改为：
+
+   ```bash
+   USB_PORTS["3-1.4:1.0"]="can_left:1000000"
+   USB_PORTS["3-1.1:1.0"]="can_right:1000000"
+   ```
+
+   含义：`3-1.4:1.0` 端口的 CAN 设备重命名为 `can_left`，波特率 `1000000`，并激活。
+
+3. 激活多个 CAN 模块
+
+   执行：
+
+   ```bash
+   bash can_muti_activate.sh
+   ```
+
+4. 验证是否设置成功
+
+   执行 `ifconfig` 查看是否有 `can_left` 和 `can_right`。
+
+
 详见：
 [docs/can_user.md](./docs/can_user.md#can-模块使用手册)
 
