@@ -320,9 +320,29 @@ class NeroDualArmServer:
             log.error("Left robot not initialized")
             return
 
-        log.info("正在连接机械臂...")
-        self.left_robot.connect()
-        time.sleep(0.5)
+        # # 检查机械臂是否已正确初始化
+        # if not hasattr(self.left_robot, '_ctx') or self.left_robot._ctx is None:
+        #     log.warning("Left robot not properly initialized (_ctx is None), skipping reset")
+        #     return
+
+        # # 检查是否已连接 (需要先检查 _ctx 是否存在且不为 None)
+        # try:
+        #     if self.left_robot.is_connected():
+        #         log.info("Left robot already connected, skipping reconnection")
+        #         return
+        # except (AttributeError, TypeError) as e:
+        #     log.warning(f"Left robot connection check failed: {e}, skipping reset")
+        #     return
+
+        # try:
+        #     log.info("正在连接机械臂...")
+        #     self.left_robot.connect()
+        # except ValueError as e:
+        #     if "does not exist" in str(e):
+        #         log.warning(f"Left CAN interface not found, skipping left robot reset: {e}")
+        #         return
+        #     raise
+        # time.sleep(0.5)
 
         log.info("\n--- 开始重置 ---")
         log.info("正在清除急停锁死标志...")
@@ -361,15 +381,63 @@ class NeroDualArmServer:
 
         time.sleep(3.0)  # 等待运动完成
         log.info("已回到初始位置")
+
+        # 更新 left_cur_pose
+        if self.left_robot is not None and self.left_ik_solver is not None:
+            from pyAgxArm.utiles.tf import rot_to_rpy
+            try:
+                current_joints = None
+                timeout = 2.0
+                start_t = time.monotonic()
+                while current_joints is None:
+                    ja = self.left_robot.get_joint_angles()
+                    if ja is not None:
+                        current_joints = ja.msg
+                        break
+                    if time.monotonic() - start_t > timeout:
+                        log.warning("[left_robot_go_home] get_joint_angles timeout")
+                        break
+                    time.sleep(0.01)
+                
+                if current_joints is not None:
+                    q_current = np.array(current_joints, dtype=float)
+                    T_fk = fk(q_current, self.left_ik_solver.nero_params)
+                    fk_xyz = np.asarray(T_fk[:3, 3], dtype=float)
+                    fk_rpy = np.asarray(rot_to_rpy(T_fk[:3, :3].tolist()), dtype=float)
+                    self.left_cur_pose = np.concatenate([fk_xyz, fk_rpy])
+                    log.info(f"[left_robot_go_home] Updated left_cur_pose: {self.left_cur_pose}")
+            except Exception as e:
+                log.error(f"[left_robot_go_home] Failed to update pose: {e}")
     
+    # @Key-Zzs: [feat] right_robot_go_home()
     def right_robot_go_home(self):
         if self.right_robot is None:
             log.error("Right robot not initialized")
             return
 
-        log.info("正在连接机械臂...")
-        self.right_robot.connect()
-        time.sleep(0.5)
+        # # 检查机械臂是否已正确初始化
+        # if not hasattr(self.right_robot, '_ctx') or self.right_robot._ctx is None:
+        #     log.warning("Right robot not properly initialized (_ctx is None), skipping reset")
+        #     return
+
+        # # 检查是否已连接 (需要先检查 _ctx 是否存在且不为 None)
+        # try:
+        #     if self.right_robot.is_connected():
+        #         log.info("Right robot already connected, skipping reconnection")
+        #         return
+        # except (AttributeError, TypeError) as e:
+        #     log.warning(f"Right robot connection check failed: {e}, skipping reset")
+        #     return
+
+        # try:
+        #     log.info("正在连接机械臂...")
+        #     self.right_robot.connect()
+        # except ValueError as e:
+        #     if "does not exist" in str(e):
+        #         log.warning(f"Right CAN interface not found, skipping right robot reset: {e}")
+        #         return
+        #     raise
+        # time.sleep(0.5)
 
         log.info("\n--- 开始重置 ---")
         log.info("正在清除急停锁死标志...")
@@ -409,6 +477,33 @@ class NeroDualArmServer:
 
         time.sleep(3.0)  # 等待运动完成
         log.info("已回到初始位置")
+
+        # 更新 right_cur_pose
+        if self.right_robot is not None and self.right_ik_solver is not None:
+            from pyAgxArm.utiles.tf import rot_to_rpy
+            try:
+                current_joints = None
+                timeout = 2.0
+                start_t = time.monotonic()
+                while current_joints is None:
+                    ja = self.right_robot.get_joint_angles()
+                    if ja is not None:
+                        current_joints = ja.msg
+                        break
+                    if time.monotonic() - start_t > timeout:
+                        log.warning("[right_robot_go_home] get_joint_angles timeout")
+                        break
+                    time.sleep(0.01)
+                
+                if current_joints is not None:
+                    q_current = np.array(current_joints, dtype=float)
+                    T_fk = fk(q_current, self.right_ik_solver.nero_params)
+                    fk_xyz = np.asarray(T_fk[:3, 3], dtype=float)
+                    fk_rpy = np.asarray(rot_to_rpy(T_fk[:3, :3].tolist()), dtype=float)
+                    self.right_cur_pose = np.concatenate([fk_xyz, fk_rpy])
+                    log.info(f"[right_robot_go_home] Updated right_cur_pose: {self.right_cur_pose}")
+            except Exception as e:
+                log.error(f"[right_robot_go_home] Failed to update pose: {e}")
 
     def robot_go_home(self):
         if self.left_robot is None or self.right_robot is None:
@@ -537,7 +632,6 @@ class NeroDualArmServer:
                     log.error("[ERROR] cur_pose is None")
                     return False
             
-            # TODO: wait for testing
             cur_pose = getattr(self, cur_pose_attr)
             pose = np.asarray(pose, dtype=float).reshape(-1)
             if pose.size != 6:
@@ -742,7 +836,7 @@ class NeroDualArmServer:
     
     # ==================== Inverse Kinematics ====================
 
-    def setup_ik_solver(self, robot, cfg, name: str, timeout_sec: float = 5.0):
+    def setup_ik_solver(self, robot, cfg, name: str, timeout_sec: float = 2.0):
         """辅助方法：获取初始关节角，提取限位，并初始化 IK Solver"""
         print(f"[{name}] 正在获取当前关节角作为 IK 初始基准...")
         current_pose = None
