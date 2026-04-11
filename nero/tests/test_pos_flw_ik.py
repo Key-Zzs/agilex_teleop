@@ -9,9 +9,9 @@ from pyAgxArm.utiles.tf import rpy_to_rot
 
 
 # 添加 ik_solver 路径
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'robotic_arm_kinematics-main'))
+# sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'robotic_arm_kinematics-main'))
 
-from nero_ik.ik_solver import (
+from nero.kinematics.nero_kinematics.nero_ik.ik_solver import (
     fk,
     NeroParams,
     ContinuityParams,
