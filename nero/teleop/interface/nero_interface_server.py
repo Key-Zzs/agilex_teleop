@@ -618,7 +618,7 @@ class NeroDualArmServer:
                     if time.monotonic() - start_t > timeout:
                         log.error("[ERROR] get_joint_angles timeout")
                         return False
-                    time.sleep(0.01)
+                    # time.sleep(0.01)
 
                 q_current = np.array(current_joints, dtype=float)
                 # FK 计算当前位姿
@@ -643,7 +643,7 @@ class NeroDualArmServer:
                 cur_rpy = np.asarray(cur_pose[3:], dtype=float)
                 current_pose = np.concatenate([cur_xyz, cur_rpy])
                 
-                print(f"当前位姿: {current_pose}")
+                log.info(f"当前位姿: {current_pose}")
 
                 # --- 计算目标位姿 ---
                 # 1. 位置直接相加
@@ -663,8 +663,8 @@ class NeroDualArmServer:
                 target_quat = tuple(v / q_norm for v in target_quat)
                 ## 目标姿态四元数 → RPY
                 target_rpy = quat_convert_euler(*target_quat)
-                print(f"目标姿态 XYZ: {target_xyz}")
-                print(f"目标姿态 RPY: {target_rpy}")
+                log.info(f"目标姿态 XYZ: {target_xyz}")
+                log.info(f"目标姿态 RPY: {target_rpy}")
 
                 # 3. 合并位置和姿态
                 target_pose = np.concatenate([target_xyz, target_rpy])
@@ -674,8 +674,8 @@ class NeroDualArmServer:
 
             # 3. IK 求解
             q_cmd = ik_solver.solve(target_pose)
-            print(f"计算出的关节角度: {q_cmd}")
-            print("-------------------------------")
+            log.info(f"计算出的关节角度: {q_cmd}")
+            log.info("-------------------------------")
 
             # 增加对求解失败的安全校验
             if q_cmd is None or len(q_cmd) == 0:
@@ -744,7 +744,7 @@ class NeroDualArmServer:
                     if time.monotonic() - start_t > timeout:
                         log.error("[ERROR] get_joint_angles timeout")
                         return False
-                    time.sleep(0.01)
+                    # time.sleep(0.01)
 
                 q_current = np.array(current_joints, dtype=float)
                 
@@ -777,10 +777,10 @@ class NeroDualArmServer:
                 # fk_rpy = T_fk[3:]
                 # current_pose = T_fk
 
-                print("-------------------------------")
-                print(f"FK当前位姿: {current_pose}")
-                print(f"TCP当前位姿: {tcp_pose.msg}")
-                print(f"Flange当前位姿: {flange_pose.msg}")
+                log.info("-------------------------------")
+                log.info(f"FK当前位姿: {current_pose}")
+                log.info(f"TCP当前位姿: {tcp_pose.msg}")
+                log.info(f"Flange当前位姿: {flange_pose.msg}")
 
                 # --- 计算目标位姿 ---
                 # 1. 位置直接相加
@@ -803,8 +803,8 @@ class NeroDualArmServer:
                 target_quat = tuple(v / q_norm for v in target_quat)
                 ## 目标姿态四元数 → RPY
                 target_fk_rpy = quat_convert_euler(*target_quat)
-                print(f"目标姿态 XYZ: {target_fk_xyz}")
-                print(f"目标姿态 RPY: {target_fk_rpy}")
+                log.info(f"目标姿态 XYZ: {target_fk_xyz}")
+                log.info(f"目标姿态 RPY: {target_fk_rpy}")
 
                 # 3. 合并位置和姿态
                 target_pose = np.concatenate([target_fk_xyz, target_fk_rpy])
@@ -814,8 +814,8 @@ class NeroDualArmServer:
 
             # 3. IK 求解
             q_cmd = ik_solver.solve(target_pose)
-            print(f"计算出的关节角度: {q_cmd}")
-            print("-------------------------------")
+            log.info(f"计算出的关节角度: {q_cmd}")
+            log.info("-------------------------------")
 
             # 增加对求解失败的安全校验 (判断是否返回了 None 或者空数组)
             if q_cmd is None or len(q_cmd) == 0:
@@ -838,7 +838,7 @@ class NeroDualArmServer:
 
     def setup_ik_solver(self, robot, cfg, name: str, timeout_sec: float = 2.0):
         """辅助方法：获取初始关节角，提取限位，并初始化 IK Solver"""
-        print(f"[{name}] 正在获取当前关节角作为 IK 初始基准...")
+        log.info(f"[{name}] 正在获取当前关节角作为 IK 初始基准...")
         current_pose = None
         current_joints = None
         start_t = time.monotonic()
@@ -869,7 +869,7 @@ class NeroDualArmServer:
 
         # 机器人的真实状态给 IK 求解器初始化
         ik_solver.init_state(current_joints)
-        print(f"[{name}] IK Solver 初始化完成！初始关节角: {np.array(current_joints).round(3)}")
+        log.info(f"[{name}] IK Solver 初始化完成！初始关节角: {np.array(current_joints).round(3)}")
         
         return ik_solver
     
