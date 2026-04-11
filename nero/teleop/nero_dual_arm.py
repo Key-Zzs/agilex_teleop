@@ -53,7 +53,20 @@ class NeroDualArm(Robot):
         # self._smoothing_alpha = 0.4
         # self._left_smoothed_delta = None
         # self._right_smoothed_delta = None
-    
+
+        # 发送频率控制
+        self.action_send_freq = 50.0  # 50Hz
+        self.action_send_dt = 1.0 / self.action_send_freq
+        self.last_action_send_time = 0.0
+
+    def _should_send_action(self) -> bool:
+        """检查是否应该发送action（频率限制）"""
+        current_time = time.time()
+        if current_time - self.last_action_send_time >= self.action_send_dt:
+            self.last_action_send_time = current_time
+            return True
+        return False
+
     def connect(self, calibrate: bool = True) -> None:
         """Connect to the robot.
         
@@ -121,15 +134,13 @@ class NeroDualArm(Robot):
             # self._robot.left_gripper_initialize()
             self._robot.left_gripper_goto(
                 width=self.config.gripper_max_open,
-                force=self._gripper_force,
-                wait=True
+                force=self._gripper_force
             )
             logger.info("[LEFT GRIPPER] Initialized successfully")
             # self._robot.right_gripper_initialize()
             self._robot.right_gripper_goto(
                 width=self.config.gripper_max_open,
-                force=self._gripper_force,
-                wait=True
+                force=self._gripper_force
                 )
             logger.info("[RIGHT GRIPPER] Initialized successfully")
             logger.info("===== [GRIPPER] Grippers initialized successfully =====\n")
@@ -148,13 +159,11 @@ class NeroDualArm(Robot):
         if self.config.use_gripper:
             self._robot.left_gripper_goto(
                 width=self.config.gripper_max_open,
-                force=self._gripper_force,
-                wait=True
+                force=self._gripper_force
             )
             self._robot.right_gripper_goto(
                 width=self.config.gripper_max_open,
-                force=self._gripper_force,
-                wait=True
+                force=self._gripper_force
             )
         
         logger.info("===== [ROBOT] Dual-arm system reset successfully =====\n")
@@ -237,14 +246,12 @@ class NeroDualArm(Robot):
                 if arm_side == "left":
                     self._robot.left_gripper_goto(
                         width=gripper_width * self.config.gripper_max_open,
-                        force=self._gripper_force,
-                        wait=True
+                        force=self._gripper_force
                     )
                 else:
                     self._robot.right_gripper_goto(
                         width=gripper_width * self.config.gripper_max_open,
-                        force=self._gripper_force,
-                        wait=True
+                        force=self._gripper_force
                     )
                 setattr(self, last_width_attr, gripper_width)
 
@@ -271,13 +278,11 @@ class NeroDualArm(Robot):
         #     # if self.config.use_gripper:
         #     #     self._gripper_client.left_gripper_goto(
         #     #         width=self.config.gripper_max_open,
-        #     #         force=self._gripper_force,
-        #     #         wait=True
+        #     #         force=self._gripper_force
         #     #     )
         #     #     self._gripper_client.right_gripper_goto(
         #     #         width=self.config.gripper_max_open,
-        #     #         force=self._gripper_force,
-        #     #         wait=True
+        #     #         force=self._gripper_force
         #     #     )
         #     self.reset()
         #     return action
@@ -299,14 +304,17 @@ class NeroDualArm(Robot):
         return action
 
     def send_action_cartesian(self, action: dict[str, Any]) -> None:
+        # 频率限制
+        if not self._should_send_action():
+            return
+        
         left_delta = np.array([
             action[f"left_delta_ee_pose.{axis}"] for axis in ["x", "y", "z", "rx", "ry", "rz"]
         ])
         right_delta = np.array([
             action[f"right_delta_ee_pose.{axis}"] for axis in ["x", "y", "z", "rx", "ry", "rz"]
         ])
-        print(left_delta)
-        print(right_delta)
+
         if not self.config.debug:
             try:
                 # 左臂：直接传入增量
@@ -319,12 +327,6 @@ class NeroDualArm(Robot):
                     
             except Exception as e:
                 logger.warning(f"[DUAL ARM] servo_p_OL failed: {e}")
-        print("Cartesian delta EE action sent!")
-        # gripper 控制保持不变
-        if "left_gripper_cmd_width" in action:
-            self.handle_gripper("left", action["left_gripper_cmd_width"], is_binary=False)
-        if "right_gripper_cmd_width" in action:
-            self.handle_gripper("right", action["right_gripper_cmd_width"], is_binary=False)
 
 
     def get_observation(self) -> dict[str, Any]:
