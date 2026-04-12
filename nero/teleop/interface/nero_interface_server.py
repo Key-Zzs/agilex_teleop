@@ -6,6 +6,8 @@ Provides zerorpc interface for dual-arm control.
 # python nero_interface/nero_interface_server.py --ip 0.0.0.0 --port 4242
 # sudo iptables -I INPUT -p tcp --dport 4242 -j ACCEPT
 
+# Version 2: Asynchronous callback version
+
 import zerorpc
 import numpy as np
 import logging
@@ -380,147 +382,6 @@ class NeroDualArmServer:
         self.left_robot_move_to_ee_pose(left_pose, delta=delta, wait=True)
         self.right_robot_move_to_ee_pose(right_pose, delta=delta, wait=True)
 
-    # def left_robot_go_home(self):
-    #     if self.left_robot is None:
-    #         log.error("Left robot not initialized")
-    #         return
-
-    #     log.info("\n--- 开始重置 ---")
-    #     log.info("正在清除急停锁死标志...")
-    #     self.left_robot.reset() 
-    #     time.sleep(1.0)  # 给主控足够的时间重启状态机
-        
-    #     log.info("正在切换回正常控制模式...")
-    #     self.left_robot.set_normal_mode()
-    #     time.sleep(0.5)
-    #     log.info("--- 状态机重置完毕 ---\n")
-
-    #     log.info("正在使能机械臂...")
-    #     start_t = time.monotonic()
-    #     is_enabled = False
-    #     while time.monotonic() - start_t < 5.0:
-    #         if self.left_robot.enable():
-    #             is_enabled = True
-    #             break
-    #         time.sleep(0.5)
-
-    #     if not is_enabled:
-    #         log.error("failed to enable left robot")
-    #         return
-
-    #     log.info("Left robot enabled!")
-
-    #     self.left_robot.set_speed_percent(30)
-
-    #     home = [0.0, -0.13, 0.0, 1.87, 0.0, 0.0, -0.17]
-
-    #     log.info("[DEBUG] Moving to home: %s", home)
-    #     self.left_robot.move_j(home)
-
-    #     result = self.left_robot.get_joint_angles()
-    #     log.info("当前关节角度:", result.msg)
-
-    #     time.sleep(3.0)  # 等待运动完成
-    #     log.info("已回到初始位置")
-
-    #     # 更新 left_cur_pose
-    #     if self.left_robot is not None and self.left_ik_solver is not None:
-    #         from pyAgxArm.utiles.tf import rot_to_rpy
-    #         try:
-    #             current_joints = None
-    #             timeout = 2.0
-    #             start_t = time.monotonic()
-    #             while current_joints is None:
-    #                 ja = self.left_robot.get_joint_angles()
-    #                 if ja is not None:
-    #                     current_joints = ja.msg
-    #                     break
-    #                 if time.monotonic() - start_t > timeout:
-    #                     log.warning("[left_robot_go_home] get_joint_angles timeout")
-    #                     break
-    #                 time.sleep(0.01)
-                
-    #             if current_joints is not None:
-    #                 q_current = np.array(current_joints, dtype=float)
-    #                 T_fk = fk(q_current, self.left_ik_solver.nero_params)
-    #                 fk_xyz = np.asarray(T_fk[:3, 3], dtype=float)
-    #                 fk_rpy = np.asarray(rot_to_rpy(T_fk[:3, :3].tolist()), dtype=float)
-    #                 self.left_cur_pose = np.concatenate([fk_xyz, fk_rpy])
-    #                 log.info(f"[left_robot_go_home] Updated left_cur_pose: {self.left_cur_pose}")
-    #         except Exception as e:
-    #             log.error(f"[left_robot_go_home] Failed to update pose: {e}")
-
-    # def right_robot_go_home(self):
-    #     if self.right_robot is None:
-    #         log.error("Right robot not initialized")
-    #         return
-
-    #     log.info("\n--- 开始重置 ---")
-    #     log.info("正在清除急停锁死标志...")
-    #     self.right_robot.reset() 
-    #     time.sleep(1.0)  # 给主控足够的时间重启状态机
-        
-    #     log.info("正在切换回正常控制模式...")
-    #     self.right_robot.set_normal_mode()
-    #     time.sleep(0.5)
-    #     log.info("--- 状态机重置完毕 ---\n")
-
-    #     log.info("正在使能机械臂...")
-    #     start_t = time.monotonic()
-    #     is_enabled = False
-    #     while time.monotonic() - start_t < 5.0:
-    #         if self.right_robot.enable():
-    #             is_enabled = True
-    #             break
-    #         time.sleep(0.5)
-
-    #     if not is_enabled:
-    #         log.info("使能失败！")
-    #         return
-            
-    #     log.info("机械臂已使能上电！")
-
-    #     self.right_robot.set_speed_percent(30)
-
-    #     #TODO：not test yet, use 'left_robot_move_to_joint_positions(left_joints_target, delta=False)' to determine
-    #     home = [0.0, -0.13, 0.0, 1.87, 0.0, 0.0, -0.17]
-
-    #     log.info("[DEBUG] Moving to home:", home)
-    #     self.left_robot.move_j(home)
-        
-    #     result = self.right_robot.get_joint_angles()
-    #     log.info("当前关节角度:", result.msg)
-
-    #     time.sleep(3.0)  # 等待运动完成
-    #     log.info("已回到初始位置")
-
-    #     # 更新 right_cur_pose
-    #     if self.right_robot is not None and self.right_ik_solver is not None:
-    #         from pyAgxArm.utiles.tf import rot_to_rpy
-    #         try:
-    #             current_joints = None
-    #             timeout = 2.0
-    #             start_t = time.monotonic()
-    #             while current_joints is None:
-    #                 ja = self.right_robot.get_joint_angles()
-    #                 if ja is not None:
-    #                     current_joints = ja.msg
-    #                     break
-    #                 if time.monotonic() - start_t > timeout:
-    #                     log.warning("[right_robot_go_home] get_joint_angles timeout")
-    #                     break
-    #                 time.sleep(0.01)
-                
-    #             if current_joints is not None:
-    #                 q_current = np.array(current_joints, dtype=float)
-    #                 T_fk = fk(q_current, self.right_ik_solver.nero_params)
-    #                 fk_xyz = np.asarray(T_fk[:3, 3], dtype=float)
-    #                 fk_rpy = np.asarray(rot_to_rpy(T_fk[:3, :3].tolist()), dtype=float)
-    #                 self.right_cur_pose = np.concatenate([fk_xyz, fk_rpy])
-    #                 log.info(f"[right_robot_go_home] Updated right_cur_pose: {self.right_cur_pose}")
-    #         except Exception as e:
-    #             log.error(f"[right_robot_go_home] Failed to update pose: {e}")
-
     def _go_home(self, robot_arm: str, callback=None):
         """
         机械臂回零，先重置状态机清除急停锁死，再切换回正常模式，最后使能上电并运动到初始位置
@@ -688,10 +549,6 @@ class NeroDualArmServer:
         """
         self.go_home_flag = True
         return True
-        # if self.left_robot is None or self.right_robot is None:
-        #     return
-        # self.left_robot_go_home()
-        # self.right_robot_go_home()
 
     # ==================== ServoJ Control (Joint Servo) ====================
 
@@ -755,266 +612,6 @@ class NeroDualArmServer:
         
     
     # ==================== ServoP Control (Pose Servo) ====================
-
-    # def servo_p_OL(self, robot_arm: str, pose: list, delta: bool) -> bool:
-    #     """
-    #     Send ServoP open loop with target pose [x, y, z, rx, ry, rz] (m, radians).
-    #     Args:
-    #         robot_arm: "left_robot" or "right_robot"
-    #         pose: 末端位置(m, radians)
-    #         delta: 绝对控制(False)，增量控制(True)
-    #     Returns:
-    #         bool: 成功返回 True，失败返回 False
-    #     """
-    #     try:
-    #         from pyAgxArm.utiles.tf import rot_to_rpy, euler_convert_quat, quat_convert_euler
-    #         # 1. 选择 robot & IK
-    #         if robot_arm == "left_robot":
-    #             robot = self.left_robot
-    #             ik_solver = self.left_ik_solver
-    #             cur_pose_attr = "left_cur_pose"
-    #         elif robot_arm == "right_robot":
-    #             robot = self.right_robot
-    #             ik_solver = self.right_ik_solver
-    #             cur_pose_attr = "right_cur_pose"
-    #         else:
-    #             log.error(f"[ERROR] invalid robot_arm: {robot_arm}")
-    #             return False
-
-    #         if robot is None or ik_solver is None:
-    #             log.error("[ERROR] robot or IK solver not ready")
-    #             return False
-            
-    #         # 首次调用时，FK 获取当前位姿作为 servo_p 增量控制的基准
-    #         if getattr(self, cur_pose_attr) is None:
-    #             # 获取当前真实关节角（带超时保护）
-    #             current_joints = None
-    #             timeout = 2.0  # 2秒超时
-    #             start_t = time.monotonic()
-    #             while current_joints is None:
-    #                 ja = robot.get_joint_angles()
-
-    #                 if ja is not None:
-    #                     current_joints = ja.msg
-    #                     break
-    #                 if time.monotonic() - start_t > timeout:
-    #                     log.error("[ERROR] get_joint_angles timeout")
-    #                     return False
-    #                 # time.sleep(0.01)
-
-    #             q_current = np.array(current_joints, dtype=float)
-    #             # FK 计算当前位姿
-    #             T_fk = fk(q_current, ik_solver.nero_params)
-    #             fk_xyz = np.asarray(T_fk[:3, 3], dtype=float)
-    #             fk_rpy = np.asarray(rot_to_rpy(T_fk[:3, :3].tolist()), dtype=float)
-    #             fk_pose = np.concatenate([fk_xyz, fk_rpy])
-    #             if fk_pose is not None:
-    #                 setattr(self, cur_pose_attr, fk_pose)
-    #             else:
-    #                 log.error("[ERROR] cur_pose is None")
-    #                 return False
-            
-    #         cur_pose = getattr(self, cur_pose_attr)
-    #         pose = np.asarray(pose, dtype=float).reshape(-1)
-    #         if pose.size != 6:
-    #             raise ValueError(f"Expected 6 pose values, got {pose.size}")
-
-    #         # 2. 计算 target_pose
-    #         if delta:
-    #             cur_xyz = np.asarray(cur_pose[:3], dtype=float)
-    #             cur_rpy = np.asarray(cur_pose[3:], dtype=float)
-    #             current_pose = np.concatenate([cur_xyz, cur_rpy])
-                
-    #             log.info(f"当前位姿: {current_pose}")
-
-    #             # --- 计算目标位姿 ---
-    #             # 1. 位置直接相加
-    #             target_xyz = cur_xyz + np.array(pose[:3], dtype=float)
-
-    #             # 2. rpy相加转为四元数相乘
-    #             ## 当前姿态 RPY → 四元数
-    #             current_quat = euler_convert_quat(cur_rpy[0], cur_rpy[1], cur_rpy[2])
-    #             ## 增量 RPY → 四元数
-    #             delta_quat = euler_convert_quat(pose[3], pose[4], pose[5])
-
-    #             ## 末端姿态增量四元数相乘得到目标姿态四元数
-    #             target_quat = _quat_multiply(current_quat, delta_quat)
-    #             ## 目标姿态四元数归一化
-    #             # target_quat = quat_normalize(target_quat) # wait for function
-    #             q_norm = np.sqrt(target_quat[0]**2 + target_quat[1]**2 + target_quat[2]**2 + target_quat[3]**2)
-    #             target_quat = tuple(v / q_norm for v in target_quat)
-    #             ## 目标姿态四元数 → RPY
-    #             target_rpy = quat_convert_euler(*target_quat)
-    #             log.info(f"目标姿态 XYZ: {target_xyz}")
-    #             log.info(f"目标姿态 RPY: {target_rpy}")
-
-    #             # 3. 合并位置和姿态
-    #             target_pose = np.concatenate([target_xyz, target_rpy])
-    #         else:
-    #             # target_pose = np.array(pose, dtype=float)
-    #             target_pose = pose
-
-    #         # 3. IK 求解
-    #         q_cmd = ik_solver.solve(target_pose)
-    #         log.info(f"计算出的关节角度: {q_cmd}")
-    #         log.info("-------------------------------")
-
-    #         # 增加对求解失败的安全校验
-    #         if q_cmd is None or len(q_cmd) == 0:
-    #             log.error("[ERROR] IK solve failed: returned None/Empty")
-    #             return False
-
-    #         if isinstance(q_cmd, np.ndarray):
-    #             q_cmd = q_cmd.tolist()
-
-    #         # 4. 下发关节控制
-    #         robot.move_js(q_cmd)
-
-    #         # 5. 更新当前位姿
-    #         setattr(self, cur_pose_attr, target_pose)
-
-    #         return True
-
-    #     except Exception as e:
-    #         log.error(f"[ERROR] servo_p_OL failed", e)
-    #         return False
-
-    # def servo_p(self, robot_arm: str, pose: list, delta: bool) -> bool:
-    #     """
-    #     Send ServoP with target pose [x, y, z, rx, ry, rz] (m, radians).
-    #     Args:
-    #         robot_arm: "left_robot" or "right_robot"
-    #         pose: 末端位置(m, radians)
-    #         delta: 绝对控制(False)，增量控制(True)
-    #     Returns:
-    #         bool: 成功返回 True，失败返回 False
-    #     """
-    #     try:
-    #         from pyAgxArm.utiles.tf import rot_to_rpy, euler_convert_quat, quat_convert_euler
-    #         # 1. 选择 robot & IK
-    #         if robot_arm == "left_robot":
-    #             robot = self.left_robot
-    #             ik_solver = self.left_ik_solver
-    #         elif robot_arm == "right_robot":
-    #             robot = self.right_robot
-    #             ik_solver = self.right_ik_solver
-    #         else:
-    #             log.error(f"[ERROR] invalid robot_arm: {robot_arm}")
-    #             return False
-
-    #         if robot is None or ik_solver is None:
-    #             log.error("[ERROR] robot or IK solver not ready")
-    #             return False
-            
-    #         # TODO: wait for testing
-    #         pose = np.asarray(pose, dtype=float).reshape(-1)
-    #         if pose.size != 6:
-    #             raise ValueError(f"Expected 6 pose values, got {pose.size}")
-
-    #         # 2. 计算 target_pose
-    #         if delta:
-    #             # 获取当前真实关节角（带超时保护）
-    #             current_joints = None
-    #             timeout = 2.0  # 2秒超时
-    #             start_t = time.monotonic()
-    #             while current_joints is None:
-    #                 ja = robot.get_joint_angles()
-
-    #                 if ja is not None:
-    #                     current_joints = ja.msg
-    #                     break
-    #                 if time.monotonic() - start_t > timeout:
-    #                     log.error("[ERROR] get_joint_angles timeout")
-    #                     return False
-    #                 # time.sleep(0.01)
-
-    #             q_current = np.array(current_joints, dtype=float)
-                
-    #             # # 关键：同步 IK 求解器状态（仅在差异较大时）
-    #             # # if not hasattr(ik_solver, 'state') or ik_solver.state is None:
-    #             # if ik_solver.state is None:
-    #             #     ik_solver.init_state(q_current)
-    #             # else:
-    #             #     q_prev = np.asarray(ik_solver.state.q_prev, dtype=float).flatten()
-    #             #     if q_prev.shape[0] != 7 or np.linalg.norm(q_current - q_prev) > 0.1:
-    #             #         # 差异超过 0.1 rad 才重新同步
-    #             #         ik_solver.init_state(q_current)
-                
-    #             # 用当前关节角做 FK，得到当前末端位姿
-    #             T_fk = fk(q_current, ik_solver.nero_params)
-    #             fk_xyz = np.asarray(T_fk[:3, 3], dtype=float)
-    #             fk_rpy = np.asarray(rot_to_rpy(T_fk[:3, :3].tolist()), dtype=float)
-    #             current_pose = np.concatenate([fk_xyz, fk_rpy])
-
-    #             # test2: get_tcp_pose
-    #             # robot.set_tcp_offset([0.0, 0.0, -0.0235, 0.0, 0.0, 0.0])
-    #             tcp_pose = robot.get_tcp_pose()
-    #             if tcp_pose is None:
-    #                 raise RuntimeError("get_tcp_pose() 返回 None")
-    #             flange_pose = robot.get_flange_pose()
-    #             if flange_pose is None:
-    #                 raise RuntimeError("get_flange_pose() 返回 None")
-    #             # T_fk = np.array(tcp_pose.msg, dtype=float)
-    #             # fk_xyz = T_fk[:3]
-    #             # fk_rpy = T_fk[3:]
-    #             # current_pose = T_fk
-
-    #             log.info("-------------------------------")
-    #             log.info(f"FK当前位姿: {current_pose}")
-    #             log.info(f"TCP当前位姿: {tcp_pose.msg}")
-    #             log.info(f"Flange当前位姿: {flange_pose.msg}")
-
-    #             # --- 计算目标位姿 ---
-    #             # 1. 位置直接相加
-    #             target_fk_xyz = fk_xyz + np.array(pose[:3], dtype=float)
-
-    #             # # 2. 姿态用小增量近似相加后归一化到 [-pi, pi]
-    #             # target_fk_rpy = (fk_rpy + np.pi) % (2.0 * np.pi) - np.pi
-
-    #             # 2. rpy相加转为四元数相乘
-    #             ## 当前姿态 RPY → 四元数
-    #             current_quat = euler_convert_quat(fk_rpy[0], fk_rpy[1], fk_rpy[2])
-    #             ## 增量 RPY → 四元数
-    #             delta_quat = euler_convert_quat(pose[3], pose[4], pose[5])
-
-    #             ## 末端姿态增量四元数相乘得到目标姿态四元数
-    #             target_quat = _quat_multiply(current_quat, delta_quat)
-    #             ## 目标姿态四元数归一化
-    #             # target_quat = quat_normalize(target_quat) # wait for function
-    #             q_norm = np.sqrt(target_quat[0]**2 + target_quat[1]**2 + target_quat[2]**2 + target_quat[3]**2)
-    #             target_quat = tuple(v / q_norm for v in target_quat)
-    #             ## 目标姿态四元数 → RPY
-    #             target_fk_rpy = quat_convert_euler(*target_quat)
-    #             log.info(f"目标姿态 XYZ: {target_fk_xyz}")
-    #             log.info(f"目标姿态 RPY: {target_fk_rpy}")
-
-    #             # 3. 合并位置和姿态
-    #             target_pose = np.concatenate([target_fk_xyz, target_fk_rpy])
-    #         else:
-    #             # target_pose = np.array(pose, dtype=float)
-    #             target_pose = pose
-
-    #         # 3. IK 求解
-    #         q_cmd = ik_solver.solve(target_pose)
-    #         log.info(f"计算出的关节角度: {q_cmd}")
-    #         log.info("-------------------------------")
-
-    #         # 增加对求解失败的安全校验 (判断是否返回了 None 或者空数组)
-    #         if q_cmd is None or len(q_cmd) == 0:
-    #             log.error("[ERROR] IK solve failed: returned None/Empty")
-    #             return False
-
-    #         if isinstance(q_cmd, np.ndarray):
-    #             q_cmd = q_cmd.tolist()
-
-    #         # 4. 下发关节控制
-    #         robot.move_js(q_cmd)
-
-    #         return True
-
-    #     except Exception as e:
-    #         log.error(f"[ERROR] servo_p failed: %s", e)
-    #         return False
 
     def _get_current_pose(self, robot, ik_solver):
         """
@@ -1145,24 +742,6 @@ class NeroDualArmServer:
     
     # ==================== Gripper (Placeholder) ====================
 
-    # def left_gripper_goto(self, width: float, force: float = 1.0, wait: bool = True):
-    #     if not self.gripper_enabled or self.left_gripper is None:
-    #         log.warning("[SERVER] Left gripper not available")
-    #         return False
-
-    #     width = float(max(0.0, min(width, 0.1)))
-
-    #     log.info(f"[SERVER] Left gripper goto: width={width:.3f}, force={force}")
-
-    #     try:
-    #         self.left_gripper.move_gripper(width=width, force=force)
-    #         if wait:
-    #             time.sleep(1.0)
-    #         return True
-    #     except Exception as e:
-    #         log.error(f"[SERVER] Left gripper goto failed: {e}")
-    #         return False
-
     def _gripper_goto(self, gripper, width: float, force: float = 1.0, callback=None):
         if not self.gripper_enabled or gripper is None:
             log.warning("[SERVER] Gripper not available")
@@ -1191,37 +770,6 @@ class NeroDualArmServer:
         """
         self.left_gripper_target = (width, force)
         return True
-     
-    # TODO: 实现逻辑未确定
-    # def left_gripper_grasp(self, force: float = 1.0, width: float = 0.05):
-    #     if not self.gripper_enabled or self.left_gripper is None:
-    #         log.warning("[SERVER] Left gripper not available")
-    #         return False
-
-    #     width = float(max(0.0, min(width, 0.1)))
-
-    #     log.info(f"[SERVER] Left gripper grasp: width={width}, force={force}")
-
-    #     try:
-    #         self.left_gripper.move_gripper(width=width, force=force)
-    #         time.sleep(1.5)
-
-    #         status = self.left_gripper.get_gripper_status()
-    #         if status is None:
-    #             return False
-
-    #         current_width = status.msg.width
-
-    #         # 抓取判断（核心 heuristic）
-    #         is_grasped = (width < 0.01) and (current_width > 0.005)
-
-    #         log.info(f"[SERVER] Left grasp result: width={current_width:.4f}, grasped={is_grasped}")
-
-    #         return is_grasped
-
-    #     except Exception as e:
-    #         log.error(f"[SERVER] Left gripper grasp failed: {e}")
-    #         return False
         
     def left_gripper_get_state(self):
         if not self.gripper_enabled or self.left_gripper is None:
@@ -1249,24 +797,6 @@ class NeroDualArmServer:
             log.error(f"[SERVER] Left gripper state failed: {e}")
             return {"is_moving": False, "is_grasped": False}
 
-    # def right_gripper_goto(self, width: float, force: float = 1.0, wait: bool = True):
-    #     if not self.gripper_enabled or self.right_gripper is None:
-    #         log.warning("[SERVER] Right gripper not available")
-    #         return False
-
-    #     width = float(max(0.0, min(width, 0.1)))
-
-    #     log.info(f"[SERVER] Right gripper goto: width={width:.3f}, force={force}")
-
-    #     try:
-    #         self.right_gripper.move_gripper(width=width, force=force)
-    #         if wait:
-    #             time.sleep(1.0)
-    #         return True
-    #     except Exception as e:
-    #         log.error(f"[SERVER] Right gripper goto failed: {e}")
-    #         return False
-
     def right_gripper_goto(self, width, force):
         """
         非阻塞设置右夹爪目标开度，由control_loop执行
@@ -1274,38 +804,34 @@ class NeroDualArmServer:
         self.right_gripper_target = (width, force)
         return True
 
-    # TODO: 实现逻辑未确定
-    # def right_gripper_grasp(self, force: float = 1.0, width: float = 0.05): pass
+    def right_gripper_get_state(self):
+        if not self.gripper_enabled or self.right_gripper is None:
+            return {"is_moving": False, "is_grasped": False}
 
-    # def right_gripper_get_state(self):
-    #     if not self.gripper_enabled or self.right_gripper is None:
-    #         return {"is_moving": False, "is_grasped": False}
+        try:
+            status = self.right_gripper.get_gripper_status()
+            if status is None:
+                return {"is_moving": False, "is_grasped": False}
 
-    #     try:
-    #         status = self.right_gripper.get_gripper_status()
-    #         if status is None:
-    #             return {"is_moving": False, "is_grasped": False}
+            width = status.msg.width
+            force = status.msg.force
 
-    #         width = status.msg.width
-    #         force = status.msg.force
+            is_moving = abs(force) > 0.1
+            is_grasped = (width > 0.005) and (force > 0.5)
 
-    #         is_moving = abs(force) > 0.1
-    #         is_grasped = (width > 0.005) and (force > 0.5)
+            return {
+                "width": width,
+                "force": force,
+                "is_moving": is_moving,
+                "is_grasped": is_grasped
+            }
 
-    #         return {
-    #             "width": width,
-    #             "force": force,
-    #             "is_moving": is_moving,
-    #             "is_grasped": is_grasped
-    #         }
-
-    #     except Exception as e:
-    #         log.error(f"[SERVER] Right gripper state failed: {e}")
-    #         return {"is_moving": False, "is_grasped": False}
+        except Exception as e:
+            log.error(f"[SERVER] Right gripper state failed: {e}")
+            return {"is_moving": False, "is_grasped": False}
     
     # ==================== Utility ====================
     
-    # TODO: wait for testing
     def stop(self, robot_arm: str):
         """
         Stops the specified robot arm by triggering an emergency stop.
