@@ -6,17 +6,21 @@ Provides zerorpc interface for dual-arm control.
 # python nero_interface/nero_interface_server.py --ip 0.0.0.0 --port 4242
 # sudo iptables -I INPUT -p tcp --dport 4242 -j ACCEPT
 
-# Version 2: Asynchronous callback version
+# Version 3: Task queue + state machine
 
 import zerorpc
 import numpy as np
 import logging
 import time
 import math
-from typing import Optional, List
+from typing import Optional, List, Dict, Callable
 import sys, os
 import pdb
 import threading
+from enum import Enum
+from dataclasses import dataclass, field
+import queue
+from datetime import datetime
 
 from nero.kinematics.analytic_IK_solver import Solver
 from nero.kinematics.nero_kinematics.nero_ik.ik_solver import fk
@@ -34,8 +38,241 @@ def _quat_multiply(q1, q2):
         w1*z2 + x1*y2 - y1*x2 + z1*w2,  # z
         w1*w2 - x1*x2 - y1*y2 - z1*z2   # w
     )
+
+# ==================== Task Type Enum ====================
+class TaskType(Enum):
+    """任务类型枚举"""
+    LEFT_GRIPPER_GOTO = "left_gripper_goto"
+    RIGHT_GRIPPER_GOTO = "right_gripper_goto"
+    ROBOT_GO_HOME = "robot_go_home"
+    LEFT_ROBOT_GO_HOME = "left_robot_go_home"
+    RIGHT_ROBOT_GO_HOME = "right_robot_go_home"
+    SERVO_P_OL = "servo_p_OL"
+
+# ==================== Task Status Enum ====================
+class TaskStatus(Enum):
+    """任务状态枚举"""
+    PENDING = "pending"
+    RUNNING = "running"
+    COMPLETED = "completed"
+    FAILED = "failed"
+    CANCELLED = "cancelled"
+
+# ==================== Task Priority Enum ====================
+class TaskPriority(Enum):
+    """任务优先级"""
+    LOW = 0
+    NORMAL = 1
+    HIGH = 2
+    EMERGENCY = 3
+
+# ==================== Task Data Class ====================
+@dataclass
+class Task:
+    """任务数据类"""
+    task_id: str
+    task_type: TaskType
+    status: TaskStatus = TaskStatus.PENDING
+    priority: TaskPriority = TaskPriority.NORMAL
+    created_at: datetime = field(default_factory=datetime.now)
+    started_at: Optional[datetime] = None
+    completed_at: Optional[datetime] = None
+    result: Optional[bool] = None
+    error_message: Optional[str] = None
+    params: Dict = field(default_factory=dict)
+    callback: Optional[Callable] = None
+    
+    def __lt__(self, other):
+        """用于优先级队列比较"""
+        return self.priority.value > other.priority.value
+
+# ==================== Task Queue Manager ====================
+class TaskQueueManager:
+    """任务队列管理器"""
+    
+    def __init__(self):
+        self.task_queue = queue.PriorityQueue()
+        self.active_tasks: Dict[str, Task] = {}
+        self.completed_tasks: Dict[str, Task] = {}
+        self.task_counter = 0
+        self.lock = threading.Lock()
+        self.max_concurrent_tasks = 3
+    
+    def add_task(self, task_type: TaskType, params: Dict = None, 
+                  priority: TaskPriority = TaskPriority.NORMAL,
+                  callback: Callable = None) -> str:
+        """添加任务到队列"""
+        with self.lock:
+            self.task_counter += 1
+            task_id = f"{task_type.value}_{self.task_counter}_{int(time.time() * 1000)}"
+            
+            task = Task(
+                task_id=task_id,
+                task_type=task_type,
+                priority=priority,
+                params=params or {},
+                callback=callback
+            )
+            
+            self.task_queue.put(task)
+            log.info(f"[TASK_QUEUE] Added task: {task_id} (type={task_type.value}, priority={priority.name})")
+            return task_id
+    
+    def get_next_task(self) -> Optional[Task]:
+        """获取下一个待执行任务"""
+        with self.lock:
+            if self.task_queue.empty():
+                return None
+            
+            task = self.task_queue.get()
+            
+            if len(self.active_tasks) >= self.max_concurrent_tasks:
+                self.task_queue.put(task)
+                return None
+            
+            task.status = TaskStatus.RUNNING
+            task.started_at = datetime.now()
+            self.active_tasks[task.task_id] = task
+            
+            log.info(f"[TASK_QUEUE] Started task: {task.task_id} (type={task.task_type.value})")
+            return task
+    
+    def complete_task(self, task_id: str, success: bool, error_message: str = None):
+        """完成任务"""
+        with self.lock:
+            if task_id in self.active_tasks:
+                task = self.active_tasks[task_id]
+                task.status = TaskStatus.COMPLETED if success else TaskStatus.FAILED
+                task.completed_at = datetime.now()
+                task.result = success
+                task.error_message = error_message
+                
+                self.completed_tasks[task_id] = task
+                del self.active_tasks[task_id]
+                
+                if task.callback:
+                    try:
+                        task.callback(success, error_message)
+                    except Exception as e:
+                        log.error(f"[TASK_QUEUE] Callback failed for task {task_id}: {e}")
+                
+                log.info(f"[TASK_QUEUE] Completed task: {task_id} (success={success})")
+    
+    def cancel_task(self, task_id: str) -> bool:
+        """取消任务"""
+        with self.lock:
+            if task_id in self.active_tasks:
+                task = self.active_tasks[task_id]
+                task.status = TaskStatus.CANCELLED
+                task.completed_at = datetime.now()
+                self.completed_tasks[task_id] = task
+                del self.active_tasks[task_id]
+                return True
+            return False
+    
+    def get_task_status(self, task_id: str) -> Optional[TaskStatus]:
+        """获取任务状态"""
+        with self.lock:
+            if task_id in self.active_tasks:
+                return self.active_tasks[task_id].status
+            if task_id in self.completed_tasks:
+                return self.completed_tasks[task_id].status
+            return None
+    
+    def get_queue_size(self) -> int:
+        """获取队列大小"""
+        with self.lock:
+            return self.task_queue.qsize()
+    
+    def get_active_task_count(self) -> int:
+        """获取活跃任务数量"""
+        with self.lock:
+            return len(self.active_tasks)
+
+# ==================== Task State Machine ====================
+class TaskStateMachine:
+    """任务状态机"""
+    
+    def __init__(self, server_instance):
+        self.server = server_instance
+        self.state_transitions = {
+            TaskStatus.PENDING: [TaskStatus.RUNNING, TaskStatus.CANCELLED],
+            TaskStatus.RUNNING: [TaskStatus.COMPLETED, TaskStatus.FAILED, TaskStatus.CANCELLED],
+            TaskStatus.COMPLETED: [],
+            TaskStatus.FAILED: [TaskStatus.PENDING],
+            TaskStatus.CANCELLED: []
+        }
+    
+    def can_transition(self, current_status: TaskStatus, new_status: TaskStatus) -> bool:
+        """检查状态转换是否合法"""
+        return new_status in self.state_transitions.get(current_status, [])
+    
+    def execute_task(self, task: Task) -> bool:
+        """执行任务"""
+        try:
+            log.info(f"[STATE_MACHINE] Executing task: {task.task_id} (type={task.task_type.value})")
+            
+            success = False
+            error_msg = None
+            
+            if task.task_type == TaskType.LEFT_GRIPPER_GOTO:
+                success = self._execute_left_gripper_goto(task)
+            elif task.task_type == TaskType.RIGHT_GRIPPER_GOTO:
+                success = self._execute_right_gripper_goto(task)
+            elif task.task_type == TaskType.LEFT_ROBOT_GO_HOME:
+                success = self._execute_left_robot_go_home(task)
+            elif task.task_type == TaskType.RIGHT_ROBOT_GO_HOME:
+                success = self._execute_right_robot_go_home(task)
+            elif task.task_type == TaskType.ROBOT_GO_HOME:
+                success = self._execute_robot_go_home(task)
+            elif task.task_type == TaskType.SERVO_P_OL:
+                success = self._execute_servo_p_ol(task)
+            else:
+                error_msg = f"Unknown task type: {task.task_type}"
+                log.error(f"[STATE_MACHINE] {error_msg}")
+            
+            return success
+            
+        except Exception as e:
+            error_msg = f"Task execution failed: {e}"
+            log.error(f"[STATE_MACHINE] {error_msg}", exc_info=True)
+            return False
+    
+    def _execute_left_gripper_goto(self, task: Task) -> bool:
+        """执行左夹爪任务"""
+        width = task.params.get('width', 0.0)
+        force = task.params.get('force', 1.0)
+        return self.server._gripper_goto(self.server.left_gripper, width, force)
+    
+    def _execute_right_gripper_goto(self, task: Task) -> bool:
+        """执行右夹爪任务"""
+        width = task.params.get('width', 0.0)
+        force = task.params.get('force', 1.0)
+        return self.server._gripper_goto(self.server.right_gripper, width, force)
+    
+    def _execute_left_robot_go_home(self, task: Task) -> bool:
+        """执行左机械臂回零任务"""
+        return self.server._go_home("left_robot")
+    
+    def _execute_right_robot_go_home(self, task: Task) -> bool:
+        """执行右机械臂回零任务"""
+        return self.server._go_home("right_robot")
+    
+    def _execute_robot_go_home(self, task: Task) -> bool:
+        """执行双机械臂回零任务"""
+        left_success = self.server._go_home("left_robot")
+        right_success = self.server._go_home("right_robot")
+        return left_success and right_success
+    
+    def _execute_servo_p_ol(self, task: Task) -> bool:
+        """执行位姿控制任务"""
+        robot_arm = task.params.get('robot_arm')
+        pose = task.params.get('pose')
+        delta = task.params.get('delta', False)
+        return self.server._servo_p_OL_internal(robot_arm, pose, delta)
+
 class NeroDualArmServer:
-    """Dual-arm Nero server interface."""
+    """Dual-arm Nero server interface with task queue and state machine."""
     
     # ==================== Robots and IK solvers ====================
     def __init__(self, gripper_enabled: bool = True):
@@ -149,7 +386,19 @@ class NeroDualArmServer:
 
         self.control_running = True
 
-        import threading
+        # ==================== Task Queue & State Machine ====================
+        self.task_queue_manager = TaskQueueManager()
+        self.task_state_machine = TaskStateMachine(self)
+        self.task_executor_running = True
+        
+        # 启动任务执行线程
+        self.task_executor_thread = threading.Thread(
+            target=self.task_executor_loop,
+            daemon=True
+        )
+        self.task_executor_thread.start()
+        log.info("[TASK_EXECUTOR] Task executor thread started")
+
         self.control_thread = threading.Thread(
             target=self.control_loop,
             daemon=True
@@ -382,17 +631,16 @@ class NeroDualArmServer:
         self.left_robot_move_to_ee_pose(left_pose, delta=delta, wait=True)
         self.right_robot_move_to_ee_pose(right_pose, delta=delta, wait=True)
 
-    def _go_home(self, robot_arm: str, callback=None):
+    def _go_home(self, robot_arm: str) -> bool:
         """
         机械臂回零，先重置状态机清除急停锁死，再切换回正常模式，最后使能上电并运动到初始位置
         
         Args:
             robot_arm: "left_robot" or "right_robot"
-            callback: 完成回调函数，参数为 (success: bool, message: str)
-        """
-        success = False
-        message = ""
         
+        Returns:
+            bool: 成功返回True，失败返回False
+        """
         try:
             if robot_arm == "left_robot":
                 robot = self.left_robot
@@ -407,16 +655,12 @@ class NeroDualArmServer:
             else:
                 message = f"Invalid robot_arm: {robot_arm}"
                 log.error(f"[{robot_arm}_go_home] {message}")
-                if callback:
-                    callback(False, message)
-                return
+                return False
             
             if robot is None:
                 message = "Robot not initialized"
                 log.error(f"[{robot_arm}_go_home] {message}")
-                if callback:
-                    callback(False, message)
-                return
+                return False
 
             log.info(f"[{robot_arm}_go_home] Starting home sequence...")
 
@@ -428,9 +672,7 @@ class NeroDualArmServer:
             except Exception as e:
                 message = f"Failed to reset robot: {e}"
                 log.error(f"[{robot_arm}_go_home] {message}")
-                if callback:
-                    callback(False, message)
-                return
+                return False
 
             # Step 2: 切换到正常模式
             log.info(f"[{robot_arm}_go_home] Switching to normal mode...")
@@ -440,9 +682,7 @@ class NeroDualArmServer:
             except Exception as e:
                 message = f"Failed to set normal mode: {e}"
                 log.error(f"[{robot_arm}_go_home] {message}")
-                if callback:
-                    callback(False, message)
-                return
+                return False
 
             # Step 3: 使能机械臂
             log.info(f"[{robot_arm}_go_home] Enabling robot...")
@@ -460,9 +700,7 @@ class NeroDualArmServer:
             if not is_enabled:
                 message = "Failed to enable robot after 5 seconds"
                 log.error(f"[{robot_arm}_go_home] {message}")
-                if callback:
-                    callback(False, message)
-                return
+                return False
 
             log.info(f"[{robot_arm}_go_home] Robot enabled successfully")
 
@@ -474,9 +712,7 @@ class NeroDualArmServer:
             except Exception as e:
                 message = f"Failed to move to home: {e}"
                 log.error(f"[{robot_arm}_go_home] {message}")
-                if callback:
-                    callback(False, message)
-                return
+                return False
 
             # Step 5: 等待运动完成
             log.info(f"[{robot_arm}_go_home] Waiting for motion to complete...")
@@ -512,22 +748,16 @@ class NeroDualArmServer:
                 except Exception as e:
                     message = f"Failed to update pose: {e}"
                     log.error(f"[{robot_arm}_go_home] {message}")
-                    if callback:
-                        callback(False, message)
-                    return
+                    return False
 
-            success = True
             message = "Home sequence completed successfully"
             log.info(f"[{robot_arm}_go_home] {message}")
+            return True
 
         except Exception as e:
             message = f"Unexpected error during home sequence: {e}"
             log.error(f"[{robot_arm}_go_home] {message}", exc_info=True)
-            success = False
-
-        finally:
-            if callback:
-                callback(success, message)
+            return False
 
     def left_robot_go_home(self):
         """
@@ -549,6 +779,10 @@ class NeroDualArmServer:
         """
         self.go_home_flag = True
         return True
+        # if self.left_robot is None or self.right_robot is None:
+        #     return
+        # self.left_robot_go_home()
+        # self.right_robot_go_home()
 
     # ==================== ServoJ Control (Joint Servo) ====================
 
@@ -682,9 +916,9 @@ class NeroDualArmServer:
 
     def servo_p_OL(self, robot_arm: str, pose: list, delta: bool) -> bool:
         """
-        接收来自客户端的末端位姿控制指令（支持增量/绝对），并更新服务器内部的目标位姿状态（target_pose）。
+        接收来自客户端的末端位姿控制指令（支持增量/绝对），通过任务队列执行。
 
-        该函数不直接控制机械臂运动，仅用于更新控制目标，由后台控制线程以固定频率执行实际控制。
+        该函数将位姿控制任务加入任务队列，由任务执行器处理。
 
         Args:
             robot_arm: "left_robot" 或 "right_robot"
@@ -695,6 +929,25 @@ class NeroDualArmServer:
 
         Returns:
             bool: 成功返回 True，失败返回 False
+        """
+        try:
+            pose = np.asarray(pose, dtype=float)
+            
+            task_id = self.task_queue_manager.add_task(
+                task_type=TaskType.SERVO_P_OL,
+                params={'robot_arm': robot_arm, 'pose': pose.tolist(), 'delta': delta},
+                priority=TaskPriority.HIGH
+            )
+            log.info(f"[SERVER] Servo P OL task queued: {task_id}")
+            return True
+
+        except Exception as e:
+            log.error(f"[ERROR] servo_p_OL failed: {e}")
+            return False
+    
+    def _servo_p_OL_internal(self, robot_arm: str, pose: list, delta: bool) -> bool:
+        """
+        内部位姿控制函数，由任务执行器调用
         """
         try:
             pose = np.asarray(pose, dtype=float)
@@ -737,16 +990,14 @@ class NeroDualArmServer:
             return True
 
         except Exception as e:
-            log.error(f"[ERROR] servo_p_OL failed: {e}")
+            log.error(f"[ERROR] _servo_p_OL_internal failed: {e}")
             return False  
     
     # ==================== Gripper (Placeholder) ====================
 
-    def _gripper_goto(self, gripper, width: float, force: float = 1.0, callback=None):
+    def _gripper_goto(self, gripper, width: float, force: float = 1.0) -> bool:
         if not self.gripper_enabled or gripper is None:
             log.warning("[SERVER] Gripper not available")
-            if callback:
-                callback(False)
             return False
 
         width = float(max(0.0, min(width, 0.1)))
@@ -755,22 +1006,49 @@ class NeroDualArmServer:
 
         try:
             gripper.move_gripper(width=width, force=force)
-            if callback:
-                callback(True)
             return True
         except Exception as e:
             log.error(f"[SERVER] Gripper goto failed: {e}")
-            if callback:
-                callback(False)
             return False
 
     def left_gripper_goto(self, width, force):
         """
-        非阻塞设置左夹爪目标开度，由control_loop执行
-        """
-        self.left_gripper_target = (width, force)
-        return True
+        非阻塞设置左夹爪目标开度，通过任务队列执行
         
+        Args:
+            width: 夹爪开度 (0.0-0.1 m)
+            force: 夹爪力 (0.0-1.0)
+        
+        Returns:
+            bool: 成功返回True
+        """
+        task_id = self.task_queue_manager.add_task(
+            task_type=TaskType.LEFT_GRIPPER_GOTO,
+            params={'width': width, 'force': force},
+            priority=TaskPriority.NORMAL
+        )
+        log.info(f"[SERVER] Left gripper goto task queued: {task_id}")
+        return True
+
+    def right_gripper_goto(self, width, force):
+        """
+        非阻塞设置右夹爪目标开度，通过任务队列执行
+        
+        Args:
+            width: 夹爪开度 (0.0-0.1 m)
+            force: 夹爪力 (0.0-1.0)
+        
+        Returns:
+            bool: 成功返回True
+        """
+        task_id = self.task_queue_manager.add_task(
+            task_type=TaskType.RIGHT_GRIPPER_GOTO,
+            params={'width': width, 'force': force},
+            priority=TaskPriority.NORMAL
+        )
+        log.info(f"[SERVER] Right gripper goto task queued: {task_id}")
+        return True
+
     def left_gripper_get_state(self):
         if not self.gripper_enabled or self.left_gripper is None:
             return {"is_moving": False, "is_grasped": False}
@@ -797,13 +1075,6 @@ class NeroDualArmServer:
             log.error(f"[SERVER] Left gripper state failed: {e}")
             return {"is_moving": False, "is_grasped": False}
 
-    def right_gripper_goto(self, width, force):
-        """
-        非阻塞设置右夹爪目标开度，由control_loop执行
-        """
-        self.right_gripper_target = (width, force)
-        return True
-
     def right_gripper_get_state(self):
         if not self.gripper_enabled or self.right_gripper is None:
             return {"is_moving": False, "is_grasped": False}
@@ -829,7 +1100,7 @@ class NeroDualArmServer:
         except Exception as e:
             log.error(f"[SERVER] Right gripper state failed: {e}")
             return {"is_moving": False, "is_grasped": False}
-    
+
     # ==================== Utility ====================
     
     def stop(self, robot_arm: str):
@@ -863,6 +1134,84 @@ class NeroDualArmServer:
         except Exception as e:
             log.error(f"[ERROR] servo_j failed: {e}")
             return False
+    
+    # ==================== Task Executor Loop ====================
+    def task_executor_loop(self):
+        """
+        任务执行器循环线程，负责从任务队列中获取任务并执行
+        """
+        log.info("[TASK_EXECUTOR] Task executor loop started")
+        
+        while self.task_executor_running:
+            try:
+                # 获取下一个任务
+                task = self.task_queue_manager.get_next_task()
+                
+                if task is not None:
+                    # 执行任务
+                    success = self.task_state_machine.execute_task(task)
+                    
+                    # 完成任务
+                    self.task_queue_manager.complete_task(
+                        task.task_id,
+                        success=success,
+                        error_message=None if success else "Task execution failed"
+                    )
+                else:
+                    # 没有任务，短暂休眠
+                    time.sleep(0.01)
+                    
+            except Exception as e:
+                log.error(f"[TASK_EXECUTOR] Error in task executor loop: {e}", exc_info=True)
+                time.sleep(0.1)
+        
+        log.info("[TASK_EXECUTOR] Task executor loop stopped")
+    
+    # ==================== Home Task Interface ====================
+    def left_robot_go_home(self):
+        """
+        左机械臂回零，通过任务队列执行
+        
+        Returns:
+            bool: 成功返回True
+        """
+        task_id = self.task_queue_manager.add_task(
+            task_type=TaskType.LEFT_ROBOT_GO_HOME,
+            params={},
+            priority=TaskPriority.HIGH
+        )
+        log.info(f"[SERVER] Left robot go home task queued: {task_id}")
+        return True
+    
+    def right_robot_go_home(self):
+        """
+        右机械臂回零，通过任务队列执行
+        
+        Returns:
+            bool: 成功返回True
+        """
+        task_id = self.task_queue_manager.add_task(
+            task_type=TaskType.RIGHT_ROBOT_GO_HOME,
+            params={},
+            priority=TaskPriority.HIGH
+        )
+        log.info(f"[SERVER] Right robot go home task queued: {task_id}")
+        return True
+    
+    def robot_go_home(self):
+        """
+        双机械臂回零，通过任务队列执行
+        
+        Returns:
+            bool: 成功返回True
+        """
+        task_id = self.task_queue_manager.add_task(
+            task_type=TaskType.ROBOT_GO_HOME,
+            params={},
+            priority=TaskPriority.HIGH
+        )
+        log.info(f"[SERVER] Robot go home task queued: {task_id}")
+        return True
     
     # ==================== Control Loop ====================
     def control_loop(self):
@@ -928,103 +1277,7 @@ class NeroDualArmServer:
                     except Exception as e:
                         log.error(f"[CONTROL] Right arm IK solve failed: {e}")
 
-                # ===== LEFT GRIPPER任务 =====
-                if self.left_gripper_target is not None and not self.left_gripper_busy:
-                    width, force = self.left_gripper_target
-                    self.left_gripper_busy = True
-                    self.left_gripper_target = None  # 清除目标，避免重复触发
-
-                    def on_left_gripper_done(success: bool):
-                        self.left_gripper_busy = False
-                        if not success:
-                            log.warning(f"[CONTROL] Left gripper command failed, retrying...")
-                            self.left_gripper_target = (width, force)  # 失败则重新设置目标
-
-                    try:
-                        threading.Thread(
-                            target=self._gripper_goto,
-                            args=(self.left_gripper, width, force, on_left_gripper_done),
-                            daemon=True
-                        ).start()
-                    except Exception as e:
-                        log.error(f"[CONTROL] Left gripper thread start failed: {e}")
-                        self.left_gripper_busy = False
-                        self.left_gripper_target = (width, force)  # 恢复目标
-
-                # ===== RIGHT GRIPPER任务 =====
-                if self.right_gripper_target is not None and not self.right_gripper_busy:
-                    width, force = self.right_gripper_target
-                    self.right_gripper_busy = True
-                    self.right_gripper_target = None  # 清除目标，避免重复触发
-
-                    def on_right_gripper_done(success: bool):
-                        self.right_gripper_busy = False
-                        if not success:
-                            log.warning(f"[CONTROL] Right gripper command failed, retrying...")
-                            self.right_gripper_target = (width, force)  # 失败则重新设置目标
-
-                    try:
-                        threading.Thread(
-                            target=self._gripper_goto,
-                            args=(self.right_gripper, width, force, on_right_gripper_done),
-                            daemon=True
-                        ).start()
-                    except Exception as e:
-                        log.error(f"[CONTROL] Right gripper thread start failed: {e}")
-                        self.right_gripper_busy = False
-                        self.right_gripper_target = (width, force)  # 恢复目标
-
-                # ===== LEFT HOME任务 =====
-                if self.left_go_home_flag and not self.left_home_busy:
-                    self.left_home_busy = True
-                    self.left_go_home_flag = False
-
-                    def on_left_home_done(success: bool, message: str):
-                        self.left_home_busy = False
-                        if success:
-                            log.info(f"[CONTROL] Left home completed: {message}")
-                        else:
-                            log.error(f"[CONTROL] Left home failed: {message}")
-
-                    try:
-                        threading.Thread(
-                            target=self._go_home,
-                            args=("left_robot", on_left_home_done),
-                            daemon=True
-                        ).start()
-                    except Exception as e:
-                        log.error(f"[CONTROL] Left home thread start failed: {e}")
-                        self.left_home_busy = False
-
-                # ===== RIGHT HOME任务 =====
-                if self.right_go_home_flag and not self.right_home_busy:
-                    self.right_home_busy = True
-                    self.right_go_home_flag = False
-
-                    def on_right_home_done(success: bool, message: str):
-                        self.right_home_busy = False
-                        if success:
-                            log.info(f"[CONTROL] Right home completed: {message}")
-                        else:
-                            log.error(f"[CONTROL] Right home failed: {message}")
-
-                    try:
-                        threading.Thread(
-                            target=self._go_home,
-                            args=("right_robot", on_right_home_done),
-                            daemon=True
-                        ).start()
-                    except Exception as e:
-                        log.error(f"[CONTROL] Right home thread start failed: {e}")
-                        self.right_home_busy = False
-
-                # ===== DUAL HOME任务 =====
-                if self.go_home_flag:
-                    self.go_home_flag = False
-                    if not self.left_home_busy:
-                        self.left_go_home_flag = True
-                    if not self.right_home_busy:
-                        self.right_go_home_flag = True
+                # Gripper和Home任务现在由任务执行器处理，不再在此处处理
 
             except KeyboardInterrupt:
                 log.warning("[CONTROL] Control loop interrupted by user")
