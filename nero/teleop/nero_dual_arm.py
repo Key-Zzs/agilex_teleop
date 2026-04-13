@@ -15,8 +15,8 @@ from lerobot.cameras import make_cameras_from_configs
 from lerobot.utils.errors import DeviceNotConnectedError, DeviceAlreadyConnectedError
 from lerobot.robots.robot import Robot
 
-from .config_nero import NeroDualArmConfig
-from .nero_interface_client import NeroDualArmClient
+from nero.teleop.nero_teleop_config import NeroDualArmConfig
+from nero.teleop.interface.nero_interface_client import NeroDualArmClient
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -221,7 +221,8 @@ class NeroDualArm(Robot):
         return features
 
     def handle_gripper(self, arm_side: str, gripper_value: float, is_binary: bool = False) -> None:
-        """Handle gripper control for specified arm."""
+        t_handle_start = time.perf_counter()
+        
         if not self.config.use_gripper:
             return
         
@@ -229,6 +230,7 @@ class NeroDualArm(Robot):
         
         if not is_binary:
             gripper_cmd_bin = gripper_value
+            # print(f"gripper_value: {gripper_value}")
         else:
             if gripper_value < self.config.close_threshold:
                 gripper_cmd_bin = 0.0
@@ -249,11 +251,17 @@ class NeroDualArm(Robot):
                     width=gripper_cmd_bin * self.config.gripper_max_open,
                     force=self._gripper_force
                 )
+            # print(f"width: {gripper_cmd_bin * self.config.gripper_max_open}")
             setattr(self, gripper_cmd_bin_attr, gripper_cmd_bin)
         except Exception as e:
             logger.warning(f"[{arm_side.upper()} GRIPPER] zerorpc error: {e}")
+        
+        t_handle_end = time.perf_counter()
+        logger.info(f"[TIMING] handle_gripper {arm_side}: {(t_handle_end-t_handle_start)*1000:.2f}ms")
     
     def send_action(self, action: dict[str, Any]) -> dict[str, Any]:
+        t_send_start = time.perf_counter()
+        
         if not self.is_connected:
             raise DeviceNotConnectedError(f"{self} is not connected.")
 
@@ -283,51 +291,70 @@ class NeroDualArm(Robot):
         
         # Handle grippers
         if "left_gripper_cmd_bin" in action:
-            self.handle_gripper("left", action["left_gripper_cmd_bin"], is_binary=True)
+            self.handle_gripper("left", action["left_gripper_cmd_bin"], is_binary=False)
         if "right_gripper_cmd_bin" in action:
-            self.handle_gripper("right", action["right_gripper_cmd_bin"], is_binary=True)
+            self.handle_gripper("right", action["right_gripper_cmd_bin"], is_binary=False)
+
+        t_send_end = time.perf_counter()
+        logger.info(f"[TIMING] send_action total: {(t_send_end-t_send_start)*1000:.2f}ms")
 
         return action
 
     def send_action_cartesian(self, action: dict[str, Any]) -> None:
+        t_cart_start = time.perf_counter()
+        
         # 频率限制
         if not self._should_send_action():
             return
         
-        # 处理左臂增量，x轴取反（根据实际情况调整）
         left_delta = np.array([
-            -action[f"left_delta_ee_pose.{axis}"] if axis in ["x"] else action[f"left_delta_ee_pose.{axis}"]
-            for axis in ["x", "y", "z", "rx", "ry", "rz"]
+            action[f"left_delta_ee_pose.{axis}"] for axis in ["x", "y", "z", "rx", "ry", "rz"]
         ])
         right_delta = np.array([
-            -action[f"right_delta_ee_pose.{axis}"] if axis in ["x"] else action[f"right_delta_ee_pose.{axis}"]
-            for axis in ["x", "y", "z", "rx", "ry", "rz"]
+            action[f"right_delta_ee_pose.{axis}"] for axis in ["x", "y", "z", "rx", "ry", "rz"]
         ])
 
         if not self.config.debug:
             try:
                 # 左臂：直接传入增量
                 if np.linalg.norm(left_delta) >= 0.001:
+                    t_servo_start = time.perf_counter()
                     self._robot.servo_p_OL("left_robot", left_delta, delta=True)
+                    t_servo_end = time.perf_counter()
+                    logger.info(f"[TIMING] left servo_p_OL: {(t_servo_end-t_servo_start)*1000:.2f}ms")
                 
                 # 右臂：直接传入增量
                 if np.linalg.norm(right_delta) >= 0.001:
+                    t_servo_start = time.perf_counter()
                     self._robot.servo_p_OL("right_robot", right_delta, delta=True)
+                    t_servo_end = time.perf_counter()
+                    logger.info(f"[TIMING] right servo_p_OL: {(t_servo_end-t_servo_start)*1000:.2f}ms")
                     
             except Exception as e:
                 logger.warning(f"[DUAL ARM] servo_p_OL failed: {e}")
+        
+        t_cart_end = time.perf_counter()
+        logger.info(f"[TIMING] send_action_cartesian total: {(t_cart_end-t_cart_start)*1000:.2f}ms")
 
 
     def get_observation(self) -> dict[str, Any]:
         if not self.is_connected:
             raise DeviceNotConnectedError(f"{self} is not connected.")
         
+        t_total_start = time.perf_counter()
+        
         try:
+            t_query_start = time.perf_counter()
             left_joint_pos = self._robot.left_robot_get_joint_positions()
             left_ee_pose = self._robot.left_robot_get_ee_pose()
+            t_query_end = time.perf_counter()
+            logger.info(f"[TIMING] left robot query: {(t_query_end-t_query_start)*1000:.2f}ms")
             
+            t_query_start = time.perf_counter()
             right_joint_pos = self._robot.right_robot_get_joint_positions()
             right_ee_pose = self._robot.right_robot_get_ee_pose()
+            t_query_end = time.perf_counter()
+            logger.info(f"[TIMING] right robot query: {(t_query_end-t_query_start)*1000:.2f}ms")
             
         except Exception as e:
             logger.warning(f"[ROBOT] zerorpc error in get_observation: {e}")
@@ -342,14 +369,14 @@ class NeroDualArm(Robot):
         # for i in range(len(left_joint_pos)):
         #     obs_dict[f"left_joint_{i+1}.pos"] = float(left_joint_pos[i])
 
-        for i, axis in enumerate(["x", "y", "z", "rx", "ry", "rz"]):
+        for i, axis in enumerate(["x", "y", "z", "rz", "ry", "rx"]):
             obs_dict[f"left_ee_pose.{axis}"] = float(left_ee_pose[i])
         
         # Right arm observations
         # for i in range(len(right_joint_pos)):
         #     obs_dict[f"right_joint_{i+1}.pos"] = float(right_joint_pos[i])
 
-        for i, axis in enumerate(["x", "y", "z", "rx", "ry", "rz"]):
+        for i, axis in enumerate(["x", "y", "z", "rz", "ry", "rx"]):
             obs_dict[f"right_ee_pose.{axis}"] = float(right_ee_pose[i])
         
         # Gripper states
@@ -361,13 +388,18 @@ class NeroDualArm(Robot):
             obs_dict["right_gripper_cmd_bin"] = None
 
         # TODO: Camera images
+        t_cam_total_start = time.perf_counter()
         for cam_key, cam in self.cameras.items():
-            start = time.perf_counter()
+            t_cam_start = time.perf_counter()
             obs_dict[cam_key] = cam.read()
-            dt_ms = (time.perf_counter() - start) * 1e3
-            logger.debug(f"{self} read {cam_key}: {dt_ms:.1f}ms")
+            t_cam_end = time.perf_counter()
+            logger.info(f"[TIMING] {cam_key} read: {(t_cam_end-t_cam_start)*1000:.2f}ms")
+        t_cam_total_end = time.perf_counter()
+        logger.info(f"[TIMING] camera total: {(t_cam_total_end-t_cam_total_start)*1000:.2f}ms")
         
         self._prev_observation = obs_dict
+        t_total_end = time.perf_counter()
+        logger.info(f"[TIMING] get_observation total: {(t_total_end-t_total_start)*1000:.2f}ms")
         return obs_dict
     
     def disconnect(self) -> None:
