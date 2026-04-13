@@ -15,8 +15,8 @@ from lerobot.cameras import make_cameras_from_configs
 from lerobot.utils.errors import DeviceNotConnectedError, DeviceAlreadyConnectedError
 from lerobot.robots.robot import Robot
 
-from nero.teleop.nero_teleop_config import NeroDualArmConfig
-from nero.teleop.interface.nero_interface_client import NeroDualArmClient
+from .config_nero import NeroDualArmConfig
+from .nero_interface_client import NeroDualArmClient
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -38,16 +38,15 @@ class NeroDualArm(Robot):
         self.config = config
         self._is_connected = False
         self._robot: Optional[NeroDualArmClient] = None
-        # self._gripper_client: Optional[DualGripperClient] = None
         self._prev_observation = None
         self._num_joints_per_arm = 7
         
         # Gripper settings
         self._gripper_force = config.gripper_force
-        self._left_gripper_width = config.gripper_max_open
-        self._right_gripper_width = config.gripper_max_open
-        self._last_left_gripper_width = config.gripper_max_open
-        self._last_right_gripper_width = config.gripper_max_open
+        self._left_gripper_cmd_bin = config.gripper_max_open
+        self._right_gripper_cmd_bin = config.gripper_max_open
+        # self._last_left_gripper_cmd_bin = config.gripper_max_open
+        # self._last_right_gripper_cmd_bin = config.gripper_max_open
 
         # Action smoothing
         # self._smoothing_alpha = 0.4
@@ -173,13 +172,13 @@ class NeroDualArm(Robot):
         """Motor features for dual-arm system."""
         features = {}
         
-        # Left arm joint positions
-        for i in range(self._num_joints_per_arm):
-            features[f"left_joint_{i+1}.pos"] = float
+        # # Left arm joint positions
+        # for i in range(self._num_joints_per_arm):
+        #     features[f"left_joint_{i+1}.pos"] = float
         
-        # Right arm joint positions
-        for i in range(self._num_joints_per_arm):
-            features[f"right_joint_{i+1}.pos"] = float
+        # # Right arm joint positions
+        # for i in range(self._num_joints_per_arm):
+        #     features[f"right_joint_{i+1}.pos"] = float
         
         # Left arm end effector pose
         for axis in ["x", "y", "z", "rx", "ry", "rz"]:
@@ -191,10 +190,10 @@ class NeroDualArm(Robot):
         
         # Gripper states
         if self.config.use_gripper:
-            features["left_gripper_state_norm"] = float
-            features["left_gripper_cmd_width"] = float
-            features["right_gripper_state_norm"] = float
-            features["right_gripper_cmd_width"] = float
+            # features["left_gripper_state_norm"] = float
+            features["left_gripper_cmd_bin"] = float
+            # features["right_gripper_state_norm"] = float
+            features["right_gripper_cmd_bin"] = float
         
         return features
     
@@ -202,13 +201,13 @@ class NeroDualArm(Robot):
     def action_features(self) -> dict[str, type]:
         features = {}
 
-        # Left arm joint positions
-        for i in range(self._num_joints_per_arm):
-            features[f"left_joint_{i+1}.pos"] = float
+        # # Left arm joint positions
+        # for i in range(self._num_joints_per_arm):
+        #     features[f"left_joint_{i+1}.pos"] = float
         
-        # Right arm joint positions
-        for i in range(self._num_joints_per_arm):
-            features[f"right_joint_{i+1}.pos"] = float
+        # # Right arm joint positions
+        # for i in range(self._num_joints_per_arm):
+        #     features[f"right_joint_{i+1}.pos"] = float
 
         # Left arm delta pose
         for axis in ["x", "y", "z", "rx", "ry", "rz"]:
@@ -217,8 +216,8 @@ class NeroDualArm(Robot):
         for axis in ["x", "y", "z", "rx", "ry", "rz"]:
             features[f"right_delta_ee_pose.{axis}"] = float
         if self.config.use_gripper:
-            features["left_gripper_cmd_width"] = float
-            features["right_gripper_cmd_width"] = float
+            features["left_gripper_cmd_bin"] = float
+            features["right_gripper_cmd_bin"] = float
         return features
 
     def handle_gripper(self, arm_side: str, gripper_value: float, is_binary: bool = False) -> None:
@@ -226,44 +225,31 @@ class NeroDualArm(Robot):
         if not self.config.use_gripper:
             return
         
-        last_width_attr = f"_last_{arm_side}_gripper_width"
-        gripper_width_attr = f"_{arm_side}_gripper_width"
+        gripper_cmd_bin_attr = f"_{arm_side}_gripper_cmd_bin"
         
         if not is_binary:
-            gripper_width = gripper_value
+            gripper_cmd_bin = gripper_value
         else:
             if gripper_value < self.config.close_threshold:
-                gripper_width = 0.0
+                gripper_cmd_bin = 0.0
             else:
-                gripper_width = self.config.gripper_max_open
+                gripper_cmd_bin = self.config.gripper_max_open
         
         if self.config.gripper_reverse:
-            gripper_width = self.config.gripper_max_open - gripper_width
+            gripper_cmd_bin = self.config.gripper_max_open - gripper_cmd_bin
         
         try:
-            last_width = getattr(self, last_width_attr)
-            if gripper_width != last_width:
-                if arm_side == "left":
-                    self._robot.left_gripper_goto(
-                        width=gripper_width * self.config.gripper_max_open,
-                        force=self._gripper_force
-                    )
-                else:
-                    self._robot.right_gripper_goto(
-                        width=gripper_width * self.config.gripper_max_open,
-                        force=self._gripper_force
-                    )
-                setattr(self, last_width_attr, gripper_width)
-
             if arm_side == "left":
-                gripper_state = self._robot.left_gripper_get_state()
+                self._robot.left_gripper_goto(
+                    width=gripper_cmd_bin * self.config.gripper_max_open,
+                    force=self._gripper_force
+                )
             else:
-                gripper_state = self._robot.right_gripper_get_state()
-            
-            gripper_state_norm = max(0.0, min(1.0, gripper_state["width"] / self.config.gripper_max_open))
-            if self.config.gripper_reverse:
-                gripper_state_norm = 1 - gripper_state_norm
-            setattr(self, gripper_width_attr, gripper_state_norm)
+                self._robot.right_gripper_goto(
+                    width=gripper_cmd_bin * self.config.gripper_max_open,
+                    force=self._gripper_force
+                )
+            setattr(self, gripper_cmd_bin_attr, gripper_cmd_bin)
         except Exception as e:
             logger.warning(f"[{arm_side.upper()} GRIPPER] zerorpc error: {e}")
     
@@ -272,20 +258,20 @@ class NeroDualArm(Robot):
             raise DeviceNotConnectedError(f"{self} is not connected.")
 
         # Check for reset request
-        # if action.get("reset_requested", False):
-        #     logger.info("[ROBOT] Reset requested for dual-arm system...")
-        #     # self._robot.robot_go_home()
-        #     # if self.config.use_gripper:
-        #     #     self._gripper_client.left_gripper_goto(
-        #     #         width=self.config.gripper_max_open,
-        #     #         force=self._gripper_force
-        #     #     )
-        #     #     self._gripper_client.right_gripper_goto(
-        #     #         width=self.config.gripper_max_open,
-        #     #         force=self._gripper_force
-        #     #     )
-        #     self.reset()
-        #     return action
+        if action.get("reset_requested", False):
+            logger.info("[ROBOT] Reset requested for dual-arm system...")
+            self._robot.robot_go_home()
+            if self.config.use_gripper:
+                self._robot.left_gripper_goto(
+                    width=self.config.gripper_max_open,
+                    force=self._gripper_force
+                )
+                self._robot.right_gripper_goto(
+                    width=self.config.gripper_max_open,
+                    force=self._gripper_force
+                )
+            self.reset()
+            return action
 
         # Use joint servo control if joint positions are provided
         if not self.config.debug:
@@ -296,10 +282,10 @@ class NeroDualArm(Robot):
                 logger.warning(f"[ROBOT] Action failed: {e}")
         
         # Handle grippers
-        if "left_gripper_cmd_width" in action:
-            self.handle_gripper("left", action["left_gripper_cmd_width"], is_binary=False)
-        if "right_gripper_cmd_width" in action:
-            self.handle_gripper("right", action["right_gripper_cmd_width"], is_binary=False)
+        if "left_gripper_cmd_bin" in action:
+            self.handle_gripper("left", action["left_gripper_cmd_bin"], is_binary=True)
+        if "right_gripper_cmd_bin" in action:
+            self.handle_gripper("right", action["right_gripper_cmd_bin"], is_binary=True)
 
         return action
 
@@ -308,11 +294,14 @@ class NeroDualArm(Robot):
         if not self._should_send_action():
             return
         
+        # 处理左臂增量，x轴取反（根据实际情况调整）
         left_delta = np.array([
-            action[f"left_delta_ee_pose.{axis}"] for axis in ["x", "y", "z", "rx", "ry", "rz"]
+            -action[f"left_delta_ee_pose.{axis}"] if axis in ["x"] else action[f"left_delta_ee_pose.{axis}"]
+            for axis in ["x", "y", "z", "rx", "ry", "rz"]
         ])
         right_delta = np.array([
-            action[f"right_delta_ee_pose.{axis}"] for axis in ["x", "y", "z", "rx", "ry", "rz"]
+            -action[f"right_delta_ee_pose.{axis}"] if axis in ["x"] else action[f"right_delta_ee_pose.{axis}"]
+            for axis in ["x", "y", "z", "rx", "ry", "rz"]
         ])
 
         if not self.config.debug:
@@ -350,31 +339,27 @@ class NeroDualArm(Robot):
         obs_dict = {}
         
         # Left arm observations
-        for i in range(len(left_joint_pos)):
-            obs_dict[f"left_joint_{i+1}.pos"] = float(left_joint_pos[i])
+        # for i in range(len(left_joint_pos)):
+        #     obs_dict[f"left_joint_{i+1}.pos"] = float(left_joint_pos[i])
 
         for i, axis in enumerate(["x", "y", "z", "rx", "ry", "rz"]):
             obs_dict[f"left_ee_pose.{axis}"] = float(left_ee_pose[i])
         
         # Right arm observations
-        for i in range(len(right_joint_pos)):
-            obs_dict[f"right_joint_{i+1}.pos"] = float(right_joint_pos[i])
+        # for i in range(len(right_joint_pos)):
+        #     obs_dict[f"right_joint_{i+1}.pos"] = float(right_joint_pos[i])
 
         for i, axis in enumerate(["x", "y", "z", "rx", "ry", "rz"]):
             obs_dict[f"right_ee_pose.{axis}"] = float(right_ee_pose[i])
         
         # Gripper states
         if self.config.use_gripper:
-            obs_dict["left_gripper_state_norm"] = self._left_gripper_width
-            obs_dict["left_gripper_cmd_width"] = self._last_left_gripper_width
-            obs_dict["right_gripper_state_norm"] = self._right_gripper_width
-            obs_dict["right_gripper_cmd_width"] = self._last_right_gripper_width
+            obs_dict["left_gripper_cmd_bin"] = self._left_gripper_cmd_bin
+            obs_dict["right_gripper_cmd_bin"] = self._right_gripper_cmd_bin
         else:
-            obs_dict["left_gripper_state_norm"] = None
-            obs_dict["left_gripper_cmd_width"] = None
-            obs_dict["right_gripper_state_norm"] = None
-            obs_dict["right_gripper_cmd_width"] = None
-        
+            obs_dict["left_gripper_cmd_bin"] = None
+            obs_dict["right_gripper_cmd_bin"] = None
+
         # TODO: Camera images
         for cam_key, cam in self.cameras.items():
             start = time.perf_counter()
@@ -395,9 +380,6 @@ class NeroDualArm(Robot):
         
         if self._robot is not None:
             self._robot.close()
-        
-        # if self._gripper_client is not None:
-        #     self._gripper_client.close()
         
         self.is_connected = False
         logger.info(f"[INFO] ===== {self.name} disconnected =====")
