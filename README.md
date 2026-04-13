@@ -1,22 +1,36 @@
 # AgxArm_teleop
 
-Nero 机械臂双臂遥操作系统，基于 Agilex 机械臂 SDK 开发。
+---
 
-## 0 环境配置
+[English](./README.md) | [中文](./README_zh-CN.md)
 
-### 0.1 创建 Conda 虚拟环境
+AgileX nero dual-arm teleoperation system, developed based on the AgileX robotic arm SDK.
+
+Required equipment for this project:
+- **AgileX nero robotic arm** x 2
+- **AgileX gripper (integrated with Intel RealSense D405 camera sensor)** x 2
+- **Intel RealSense D435i camera sensor** x 1
+- **Server PC** (requires higher running memory) x 1: Used to run the Server project to control the robotic arms (connected to CAN-USB adapters linked to AgileX robotic arms)
+- **Client PC** (requires larger disk space) x 1: Used to run the Client project for teleoperating the robotic arms and collecting data (connected to three camera sensors)
+- AgileX official **CAN-USB adapter** x 2
+
+---
+
+## 0 Environment Setup
+
+### 0.1 Create Conda Virtual Environment
 
 ```bash
-# 创建名为 agilex_teleop 的 Python 3.10 环境
+# Create a Python 3.10 environment named agilex_teleop
 conda create -n agilex_teleop python=3.10 -y
 
-# 激活环境
+# Activate the environment
 conda activate agilex_teleop
 ```
 
-### 0.2 克隆 lerobot 项目并安装 lerobot 框架
+### 0.2 Clone lerobot Project and Install lerobot Framework
 ```bash
-# 安装指定版本 0.3.4
+# Install specific version 0.3.4
 # git checkout da5d2f3e9187fa4690e6667fe8b294cae49016d6
 git clone https://github.com/huggingface/lerobot.git
 cd lerobot
@@ -24,198 +38,293 @@ git checkout da5d2f3e9187fa4690e6667fe8b294cae49016d6
 pip install -e .
 ```
 
-### 0.3 克隆本项目
+### 0.3 Clone and Initialize Project Dependencies
 
-```bash
-mkdir agilex_ws && cd agilex_ws
-git clone --recursive https://github.com/Key-Zzs/agilex_teleop.git
-cd agilex_teleop
-```
+#### 0.3.1 Server Project
 
-如果忘记添加 `--recursive` 选项，需要手动克隆子模块：
-
-```bash
-cd agilex_ws/agilex_teleop
-
-# 1. 初始化 submodule 配置
-git submodule init
-
-# 2. 拉取所有 submodule 的实际代码（递归，如果子模块还有子模块）
-git submodule update --recursive
-```
-
-### 0.4 安装项目依赖
-
-#### 方式一：使用 requirements.txt（推荐）
-
-```bash
-# 安装所有依赖
-pip install -r requirements.txt
-
-# 安装项目（开发模式）
-pip install -e .
-```
-
-PS: 首次安装后运行 `pip install -r requirements.txt`，如果遇到冲突，可尝试升级 sympy 或降级 torch
-
-#### 方式二：使用 pyproject.toml
-
-```bash
-# 基础安装
-pip install -e .
-
-# 包含仿真功能
-pip install -e ".[sim]"
-
-# 包含动力学功能
-pip install -e ".[dynamics]"
-
-# 全部功能
-pip install -e ".[sim,dynamics]"
-```
-
-### 4. 安装 Pinocchio（可选）
-
-Pinocchio 依赖较多，如果 `requirements.txt` 安装失败，可使用 conda-forge：
-
-```bash
-conda install -c conda-forge pinocchio eigenpy -y
-```
-
-
-
-## 1 快速开始
-
-### 1.1 激活 CAN 设备
-
-#### 1.1.1 激活单个 CAN 模块
-
-> 使用 `can_activate.sh` 脚本
-
-1. 查看 USB 端口硬件地址
-
-   拔掉所有 CAN 模块，只将连接到机械臂的 CAN 模块插入 PC，执行：
-
-   ```shell
-   bash find_all_can_port.sh
-   ```
-
-   记录下 `USB port` 的数值，例如 `3-1.4:1.0`。
-
-2. 激活 CAN 设备
-
-   假设上面的 `USB port` 数值为 `3-1.4:1.0`，执行：
+1. Clone the Server project to your workspace
 
    ```bash
-   bash can_activate.sh can_piper 1000000 "3-1.4:1.0"
+   cd lerobot
+   mkdir agilex_ws && cd agilex_ws
+   git clone --recursive https://github.com/Key-Zzs/agilex_teleop.git
+   cd agilex_teleop
    ```
 
-   含义：将硬件编码为 `3-1.4:1.0` 的 USB 端口上的 CAN 设备重命名为 `can_piper`，设定波特率为 `1000000`，并激活。
+   If you forgot to add the `--recursive` option, you need to manually clone submodules:
 
-3. 检查是否激活成功
+   ```bash
+   cd agilex_ws/agilex_teleop
 
-   执行 `ifconfig` 查看是否有 `can_piper`，如果有则 CAN 模块设置成功。
+   # 1. Initialize submodule configuration
+   git submodule init
 
-> 简化用法（单模块）
-> 如果电脑只插入了一个 CAN 模块，可以直接执行：
+   # 2. Fetch all submodule code (recursive, if submodules have submodules)
+   git submodule update --recursive
+   ```
 
-```bash
-bash can_activate.sh can0 1000000
-```
+2. Install project dependencies
 
-#### 1.1.2 同时激活多个 CAN 模块
+   - Method 1: Use requirements.txt + pyproject.toml to install all dependencies (recommended for testing)
 
-> 使用 `can_muti_activate.sh` 脚本
+      ```bash
+      # Install all dependencies
+      pip install -r requirements.txt
 
-首先确定有多少个官方 CAN 模块被插入到电脑（以下示例假设为 2 个）。
-
-> **提示：** 若当前电脑插入了 5 个 CAN 模块，也可以只激活指定的 CAN 模块。
-
-1. 记录每个 CAN 模块对应的 USB 端口硬件地址
-
-   逐个拔插 CAN 模块并一一记录每个模块对应的 USB 端口硬件地址。
-
-   在 `can_muti_activate.sh` 中，`USB_PORTS` 参数中元素的数量为预激活的 CAN 模块数量。
-
-   1. 将其中一个 CAN 模块单独插入 PC，执行：
-
-      ```shell
-      bash find_all_can_port.sh
+      # Install project (development mode)
+      pip install -e .
       ```
 
-      记录下 `USB port` 的数值，例如 `3-1.4:1.0`。
+      PS: After initial installation, run `pip install -r requirements.txt`. If you encounter conflicts, try upgrading sympy or downgrading torch.
 
-   2. 接着插入下一个 CAN 模块（**不可以**与上次插入的 USB 口相同），执行：
+   - Method 2: Use pyproject.toml to install required dependencies
 
-      ```shell
-      bash find_all_can_port.sh
+      ```bash
+      # Basic installation
+      pip install -e .
+
+      # Include simulation features
+      pip install -e ".[sim]"
+
+      # Include dynamics features
+      pip install -e ".[dynamics]"
+   ```
+
+   - Install Pinocchio (optional)
+
+      Pinocchio has many dependencies. If `requirements.txt` installation fails, you can use conda-forge:
+
+      ```bash
+      conda install -c conda-forge pinocchio eigenpy -y
       ```
 
-      记录下第二个 CAN 模块的 `USB port` 数值，例如 `3-1.1:1.0`。
+#### 0.3.2 Client Project
 
-      > **提示：** 如果未曾激活过，则第一个插入的 CAN 模块默认为 `can0`，第二个为 `can1`；若激活过，名字为之前激活过的名称。
+1. Clone the Server project to your workspace and install dependencies
 
-2. 预定义 USB 端口、目标接口名称及波特率
+   ```bash
+   cd lerobot
+   mkdir agilex_ws && cd agilex_ws
+   git clone https://github.com/Shenzhaolong1330/dual_arm_teleop.git
+   # Alternative: Use Key-Zzs fork of dual_arm_teleop project
+   # git clone https://github.com/Key-Zzs/dual_arm_teleop.git
+   cd dual_arm_teleop
+   pip install -e .
+   ```
 
-   假设上面记录的 `USB port` 数值分别为 `3-1.4:1.0` 和 `3-1.1:1.0`，则将 `can_muti_activate.sh` 中的参数修改为：
+2. Install Oculus Reader APK (please search for specific installation method or consult @Shenzhaolong1330)
+
+   ```bash
+   cd dual_arm_teleop/teleoperators/oculus_teleoperator/oculus
+   git clone https://github.com/rail-berkeley/oculus_reader.git
+   cd oculus_reader
+   pip install -e .
+   ```
+
+3. Determine the Server PC's IP address and configure in [record_cfg.yaml](../dual_arm_teleop/scripts/config/record_cfg.yaml)
+
+   ```bash
+   ifconfig
+   ```
+
+   ```yaml
+   robot:
+      robot_ip: &ip "192.168.110.41" # Server PC's IP address
+      robot_port: 4242 # Server PC's port number
+    ```
+
+---
+
+## 1 Teleoperation Prerequisites
+
+### 1.1 Server PC Configuration
+
+#### 1.1.1 Activate Dual-Arm CAN Devices
+
+> Use the `can_muti_activate.sh` script
+
+First, insert the two official CAN modules into the Server PC. It is recommended to insert the left arm CAN module first, then the right arm CAN module.
+
+1. Record the USB port hardware addresses for each CAN module
+
+   ```bash
+   bash pyAgxArm/scripts/ubuntu/find_all_can_port.sh
+   ```
+
+   Record the `USB port` values for the two CAN modules, for example `3-1.4:1.0` and `3-1.1:1.0`.
+
+   > **Tip:** If never activated before, the first inserted CAN module defaults to `can0`, the second to `can1`. If inserting in the recommended order (left arm first), the left arm CAN module is `can0` and the right arm is `can1`. If previously activated, the names will be whatever was used before.
+
+2. Pre-define USB ports, target interface names, and baud rates
+
+   Assuming the recorded `USB port` values are `3-1.4:1.0` and `3-1.1:1.0`, modify the parameters in `agilex_ws/agilex_teleop/pyAgxArm/scripts/ubuntu/can_muti_activate.sh`:
 
    ```bash
    USB_PORTS["3-1.4:1.0"]="can_left:1000000"
    USB_PORTS["3-1.1:1.0"]="can_right:1000000"
    ```
 
-   含义：`3-1.4:1.0` 端口的 CAN 设备重命名为 `can_left`，波特率 `1000000`，并激活。
+   Meaning: Rename the CAN device on port `3-1.4:1.0` to `can_left`, with baud rate `1000000`, and activate it.
 
-3. 激活多个 CAN 模块
+3. Activate Multiple CAN Modules
 
-   执行：
+   Execute:
 
    ```bash
-   bash can_muti_activate.sh
+   bash pyAgxArm/scripts/ubuntu/can_muti_activate.sh
    ```
 
-4. 验证是否设置成功
+4. Verify Settings
 
-   执行 `ifconfig` 查看是否有 `can_left` 和 `can_right`。
+   ```bash
+   bash pyAgxArm/scripts/ubuntu/find_all_can_port.sh
+   ```
+   Check if `can_left` and `can_right` appear.
 
 
-详见：
-[docs/can_user.md](./docs/can_user.md#can-模块使用手册)
+For CAN module user manual, see official documentation: [docs/can_user.md](./docs/can_user.md#can-module-user-manual)
 
-### 1.2 运行 nero 测试脚本
+#### 1.1.2 Run nero Test Scripts (recommended to run, otherwise the robotic arm may remain in a disabled state)
+
+**Note**:
+1. [reset.py](./nero/tests/reset.py) and [test_pos_flw_ik.py](./nero/tests/test_pos_flw_ik.py) are single-arm test scripts. After running one arm, modify the CAN device name in the file (e.g., `can_left` or `can_right`), then run the other.
+2. After running [reset.py](./nero/tests/reset.py), the robotic arm will instantly lose torque, **be sure to hold it steady!!!!!!**
 
 ```bash
-# nero 关节重置脚本
+# nero joint reset script
 python nero/tests/reset.py
-# nero 位置跟随 IK 测试脚本
+# nero position following IK test script
 python nero/tests/test_pos_flw_ik.py
 ```
 
-## 2 启动遥操作服务
+### 1.2 Client PC Configuration
 
-### 2.1 开启机械臂 server 服务端
+#### 1.2.1 Camera Environment Setup
 
-```bash
-# 开放端口 4242
-udo iptables -I INPUT -p tcp --dport 4242 -j ACCEPT
-# 启动机械臂 tcp 通信服务
-python nero/teleop/interface/nero_interface_server.py --ip 0.0.0.0 --port 4242
-# 确定 server 端 ip
-ifconfig
-```
+1. RealSense Camera Environment Setup
 
-### 2.2 遥操作端
+   Run `realsense-viewer` to check if the RealSense camera is working properly:
 
-## 注意事项
+      ```bash
+      realsense-viewer
+      ```
 
-1. **安全警告**：运行重置脚本时，机械臂会瞬间失去力矩，务必用手扶稳！
-2. **CAN 通信**：确保 CAN 接口正确配置（如 `can_left`, `can_right`）
-3. **权限问题**：Linux 下可能需要设置 CAN 接口权限：
-   ```bash
-   sudo ip link set can0 up type can bitrate 1000000
+   > If `realsense-viewer` command is not found, it means `realsense-viewer` is not installed. Please search for installation instructions online.
+
+2. Obtain and Configure Serial Numbers (skip if using current device)
+
+   Run `realsense-viewer` to view RealSense camera info, record the camera serial number `Serial Number`, for example `412622270929`. Then replace the serial numbers after `left_wrist_cam_serial`, `right_wrist_cam_serial`, and `head_cam_serial` in `agilex_ws/dual_arm_teleop/scripts/config/record_cfg.yaml` with the corresponding camera serial numbers.
+
+   ```yaml
+   teleop:
+      cameras:
+         left_wrist_cam_serial: "412622270929"
+         right_wrist_cam_serial: "412622270929"
+         head_cam_serial: "412622270929"
    ```
 
-## 项目结构
+#### 1.2.2 Oculus Quest Setup
+
+1. Install ADB (Android Debug Bridge): Required tool for communication between Oculus Quest and computer
+
+   ```bash
+   # On Ubuntu
+   sudo apt install android-tools-adb
+
+   # Verify installation
+   adb version
+   ```
+
+2. Enable Developer Mode on Oculus Quest
+
+   1. Create or join a developer organization at [Meta for Developers](https://developer.oculus.com/manage/organizations/create/)
+   2. Open the Meta Quest app on your phone
+   3. Go to **Settings** → Select your device → **More Settings** → **Developer Mode**
+   4. Enable the **Developer Mode** switch
+
+3. Connect Oculus Quest to Computer
+
+   Method 1: USB Connection (recommended for initial setup or high real-time requirements)
+
+   1. Connect Oculus Quest to computer using a USB-C cable
+   2. Put on the headset and allow USB debugging when prompted
+   3. Check "Always allow from this computer"
+   4. Verify connection:
+   
+      ```bash
+      adb devices
+      # Expected output:
+      # List of devices attached
+      # <device_id>    device
+      adb shell ip route
+      # Find the IP address after "src", for example 192.168.110.62
+      ```
+
+   Method 2: Wireless Connection (more convenient operation)
+
+   1. First connect Oculus Quest to computer via USB cable to execute Method 1
+   2. Ensure Oculus Quest and computer are on the same network
+   3. Verify connection:
+   
+      ```bash
+      adb connect <obtained_IP_address>:5555
+      adb shell ip route
+      # Find the IP address after "src", for example 192.168.110.62
+      ```
+
+   4. Configure IP in `record_cfg.yaml`:
+   
+      ```yaml
+      teleop:
+         oculus_config:
+            ip: "192.168.110.62"  # Your Oculus Quest IP address
+      ```
+
+---
+
+## 2 Start Teleoperation Server Service
+
+**Note**:
+1. Please ensure `bash pyAgxArm/scripts/ubuntu/find_all_can_port.sh` outputs `can_left` and `can_right` two CAN devices!!
+2. **When starting the Server service** [nero_interface_server.py](./nero/teleop/interface/nero_interface_server.py) **be sure to hold the robotic arm steady, the program is not optimized yet, there is a risk of falling!!!!!!**
+
+```bash
+# Start Server service
+python nero/teleop/interface/nero_interface_server.py --ip 0.0.0.0 --port 4242
+
+# Open port 4242 (if Server PC has ports open by default, skip this step)
+sudo iptables -I INPUT -p tcp --dport 4242 -j ACCEPT # iptables method
+```
+
+---
+
+## 3 Start Teleoperation Client Service
+
+**Note**:
+1. Before starting, please check if Oculus Quest is connected successfully with `adb devices`
+2. After modifying any Python file in the project, run `pip install -e .` in the project root directory `agilex_ws/dual_arm_teleop` to update dependencies
+
+```bash
+# Reset robotic arm
+robot-record
+# Right arrow: Stop data collection
+# Enter: Continue teleoperation
+```
+
+> For other operations, run `robot-help` to view
+
+- Supplement: Oculus Controller Operation Instructions
+
+   | Control Key | Function |
+   |-------------|----------|
+   | **RG (Right Grip)** | Hold to start robot movement |
+   | **RTr (Right Trigger)** | Press to close gripper, release to open gripper |
+   | **A Button** | Request robot reset |
+   | **Right controller pose** | Control end effector incremental pose |
+
+---
+
+## Project Core Structure
 
 ```
 AgxArm_teleop/
@@ -231,17 +340,23 @@ AgxArm_teleop/
 └── pyproject.toml         # 项目配置
 ```
 
-## 开发人员资料
+---
 
-| 说明 | 文档 |
+## Official Development Resources
+
+| Description | Documentation |
 | --- | --- |
 | ROS | [agx_arm_ros](https://github.com/agilexrobotics/agx_arm_ros) |
-| CAN 模块手册 | [docs/can_user.md](./docs/can_user.md#can-模块使用手册) |
-| Nero 首次使用 CAN 指南 | [docs/nero/first_time_user_guide_can.md](./docs/nero/first_time_user_guide_can.md#nero-首次使用指南can) |
-| Nero API | [docs/nero/nero_api.md](./docs/nero/nero_api.md#nero-机械臂-api-使用文档) |
-| AgxGripper API | [docs/effector/agx_gripper/agx_gripper_api.md](./docs/effector/agx_gripper/agx_gripper_api.md#agxgripper-夹爪-api-使用文档) |
+| CAN Module Manual | [docs/can_user.md](./docs/can_user.md#can-module-user-manual) |
+| Nero First-Time User CAN Guide | [docs/nero/first_time_user_guide_can.md](./docs/nero/first_time_user_guide_can.md#nero-first-time-user-guidecan) |
+| Nero API | [docs/nero/nero_api.md](./docs/nero/nero_api.md#nero-robotic-arm-api-usage-documentation) |
+| AgxGripper API | [docs/effector/agx_gripper/agx_gripper_api.md](./docs/effector/agx_gripper/agx_gripper_api.md#agxgripper-gripper-api-usage-documentation) |
 
+---
 
-## 来源
+## Acknowledgments
 
-本仓库基于 [pyAgxArm](https://github.com/agilexrobotics/pyAgxArm.git) 的代码开发，在此表示感谢。
+This code is built upon the following open-source repositories, which we would like to thank.
+
+- [pyAgxArm](https://github.com/agilexrobotics/pyAgxArm)
+- [dual_arm_teleop](https://github.com/Shenzhaolong1330/dual_arm_teleop)
