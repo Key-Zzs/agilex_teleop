@@ -21,17 +21,33 @@ class Solver:
     """
     基于 ik_solver.py 的解析 IK 求解器
     使用 ik_arm_angle_with_report 进行单帧求解
+    
+    性能优化：
+    - n_psi: 全局扫描点数，默认61（原181）
+    - local_theta0_count: 局部窗口点数，默认21（原41）
+    - 禁用1D QP优化（额外开销）
     """
-    def __init__(self, joint_limits, dt, n_psi=181):
+    def __init__(self, joint_limits, dt, n_psi=61):
         self.joint_limits = joint_limits
         self.dt = dt
-        self.n_psi = n_psi
+        self.n_psi = n_psi  # 减少扫描点数：181→61
         
         # 使用默认的 NERO DH 参数
         self.nero_params = NeroParams.default()
         
-        # 连续性参数
-        self.continuity = ContinuityParams()
+        # 连续性参数 - 优化性能
+        self.continuity = ContinuityParams(
+            local_theta0_window=0.35,
+            local_theta0_count=21,  # 减少局部扫描点：41→21
+            w_vel=1.0,
+            w_acc=0.25,
+            w_pose=0.1,
+            w_theta0=0.15,
+            hysteresis_margin=0.03,
+            enable_global_fallback=True,
+            w_qp_joint_inc=0.0,  # 禁用QP优化
+            w_qp_pose_err=0.0,   # 禁用QP优化
+        )
         
         # 运行时状态
         self.state = None

@@ -487,12 +487,10 @@ class NeroDualArmServer:
         self.right_robot.set_speed_percent(30)
 
         home = [0.0, -0.13, 0.0, 1.87, 0.0, 0.0, -0.17]
-
+        
         log.info("[DEBUG] Moving to home: %s", home)
         self.right_robot.move_j(home)
-        print("Right joints:", home)
-        
-        # 等待运动完成（替代固定的 time.sleep(3.0)）
+        # 等待运动完成
         motion_complete = self._wait_for_motion_complete(self.right_robot, home, timeout=10.0)
         if not motion_complete:
             log.warning("[right_robot_go_home] Motion did not complete within timeout")
@@ -613,8 +611,34 @@ class NeroDualArmServer:
             bool: 成功返回 True，失败返回 False
         """
         try:
+            import time as _time
             from pyAgxArm.utiles.tf import rot_to_rpy, euler_convert_quat, quat_convert_euler
+            
+            # ========== 调用间隔追踪 ==========
+            _t_call_start = _time.perf_counter()
+            if not hasattr(self, '_last_call_time'):
+                self._last_call_time = {}
+                self._call_count = 0
+                self._freq_start_time = _t_call_start
+            
+            _last_time = self._last_call_time.get(robot_arm, _t_call_start)
+            _interval = (_t_call_start - _last_time) * 1000
+            self._last_call_time[robot_arm] = _t_call_start
+            self._call_count += 1
+            
+            # 每50次计算实际频率
+            if self._call_count % 50 == 0:
+                _elapsed = _t_call_start - self._freq_start_time
+                _actual_freq = 50 / _elapsed if _elapsed > 0 else 0
+                self._freq_start_time = _t_call_start
+                print(f"[FREQ] 实际调用频率: {_actual_freq:.1f} Hz (目标50Hz)")
+            
+            # ========== 计时诊断 ==========
+            _t_start = _time.perf_counter()
+            _timings = {}
+            
             # 1. 选择 robot & IK
+            _t0 = _time.perf_counter()
             if robot_arm == "left_robot":
                 robot = self.left_robot
                 ik_solver = self.left_ik_solver
@@ -630,22 +654,26 @@ class NeroDualArmServer:
             if robot is None or ik_solver is None:
                 log.error("[ERROR] robot or IK solver not ready")
                 return False
+            _timings['select_robot'] = (_time.perf_counter() - _t0) * 1000
 
-            q_current = self._get_current_joints(robot, timeout=2.0)
-            if q_current is None:
-                log.error("[ERROR] get_joint_angles timeout")
-                return False
-
-            # ⚠️ 开环控制：仅在首次调用时初始化 IK 状态，之后不干预求解器内部状态
+            # 2. 开环控制：仅在首次调用时读取关节角初始化 IK 状态
+            # 后续调用跳过 CAN 读取，大幅减少延迟
+            _t0 = _time.perf_counter()
             if ik_solver.state is None:
+                q_current = self._get_current_joints(robot, timeout=2.0)
+                if q_current is None:
+                    log.error("[ERROR] get_joint_angles timeout")
+                    return False
                 ik_solver.init_state(q_current)
                 log.info("[servo_p_OL] IK solver state initialized")
+            _timings['get_joints'] = (_time.perf_counter() - _t0) * 1000
             
             pose = np.asarray(pose, dtype=float).reshape(-1)
             if pose.size != 6:
                 raise ValueError(f"Expected 6 pose values, got {pose.size}")
 
-            # 2. 计算 target_pose
+            # 3. 计算 target_pose
+            _t0 = _time.perf_counter()
             if delta:
                 pose = self._limit_pose_delta(pose)
                 
@@ -661,7 +689,8 @@ class NeroDualArmServer:
                 cur_xyz = np.asarray(cur_pose[:3], dtype=float)
                 cur_rpy = np.asarray(cur_pose[3:], dtype=float)
                 
-                log.info(f"当前位姿 (from IK state): {cur_pose}")
+                # 调试日志改为 debug 级别，避免高频输出影响性能
+                log.debug(f"当前位姿 (from IK state): {cur_pose}")
 
                 # --- 计算目标位姿 ---
                 # 1. 位置直接相加
@@ -674,26 +703,30 @@ class NeroDualArmServer:
                 delta_quat = euler_convert_quat(pose[3], pose[4], pose[5])
 
                 ## 末端姿态增量四元数相乘得到目标姿态四元数
-                target_quat = quat_multiply(current_quat, delta_quat)
+                target_quat = quat_multiply(delta_quat, current_quat)
                 ## 目标姿态四元数归一化
                 # target_quat = quat_normalize(target_quat) # wait for function
                 q_norm = np.sqrt(target_quat[0]**2 + target_quat[1]**2 + target_quat[2]**2 + target_quat[3]**2)
                 target_quat = tuple(v / q_norm for v in target_quat)
                 ## 目标姿态四元数 → RPY
                 target_rpy = quat_convert_euler(*target_quat)
-                log.info(f"目标姿态 XYZ: {target_xyz}")
-                log.info(f"目标姿态 RPY: {target_rpy}")
+                log.debug(f"目标姿态 XYZ: {target_xyz}")
+                log.debug(f"目标姿态 RPY: {target_rpy}")
 
                 # 3. 合并位置和姿态
                 target_pose = np.concatenate([target_xyz, target_rpy])
             else:
                 # 绝对模式：直接使用目标位姿
                 target_pose = pose
+            _timings['target_compute'] = (_time.perf_counter() - _t0) * 1000
 
-            # 3. IK 求解
+            # 4. IK 求解
+            _t0 = _time.perf_counter()
             q_cmd = ik_solver.solve(target_pose)
-            log.info(f"计算出的关节角度: {q_cmd}")
-            log.info("-------------------------------")
+            _timings['ik_solve'] = (_time.perf_counter() - _t0) * 1000
+            
+            # 调试日志改为 debug 级别
+            log.debug(f"计算出的关节角度: {q_cmd}")
 
             # 增加对求解失败的安全校验
             if q_cmd is None or len(q_cmd) == 0:
@@ -709,8 +742,21 @@ class NeroDualArmServer:
             # 参考 test_pos_flw_ik.py 的做法
             # q_cmd = self._limit_joint_step(q_current, np.asarray(q_cmd, dtype=float)).tolist()
 
-            # 4. 下发关节控制
+            # 5. 下发关节控制
+            _t0 = _time.perf_counter()
             robot.move_js(q_cmd)
+            _timings['send_command'] = (_time.perf_counter() - _t0) * 1000
+
+            # ========== 计时诊断（每次输出，用于调试50Hz性能） ==========
+            _timings['total'] = (_time.perf_counter() - _t_start) * 1000
+            print(f"[TIMING-{robot_arm}] "
+                  f"interval={_interval:.1f}ms, "
+                  f"select={_timings['select_robot']:.1f}ms, "
+                  f"get_joints={_timings['get_joints']:.1f}ms, "
+                  f"target={_timings['target_compute']:.1f}ms, "
+                  f"ik={_timings['ik_solve']:.1f}ms, "
+                  f"send={_timings['send_command']:.1f}ms, "
+                  f"total={_timings['total']:.1f}ms")
 
             return True
 
@@ -769,8 +815,8 @@ class NeroDualArmServer:
                 fk_rpy = np.asarray(rot_to_rpy(T_fk[:3, :3].tolist()), dtype=float)
                 current_pose = np.concatenate([fk_xyz, fk_rpy])
 
-                log.info("-------------------------------")
-                log.info(f"FK当前位姿: {current_pose}")
+                log.debug("-------------------------------")
+                log.debug(f"FK当前位姿: {current_pose}")
 
                 # --- 计算目标位姿 ---
                 # 1. 位置直接相加
@@ -793,8 +839,8 @@ class NeroDualArmServer:
                 target_quat = tuple(v / q_norm for v in target_quat)
                 ## 目标姿态四元数 → RPY
                 target_fk_rpy = quat_convert_euler(*target_quat)
-                log.info(f"目标姿态 XYZ: {target_fk_xyz}")
-                log.info(f"目标姿态 RPY: {target_fk_rpy}")
+                log.debug(f"目标姿态 XYZ: {target_fk_xyz}")
+                log.debug(f"目标姿态 RPY: {target_fk_rpy}")
 
                 # 3. 合并位置和姿态
                 target_pose = np.concatenate([target_fk_xyz, target_fk_rpy])
@@ -804,8 +850,7 @@ class NeroDualArmServer:
 
             # 3. IK 求解
             q_cmd = ik_solver.solve(target_pose)
-            log.info(f"计算出的关节角度: {q_cmd}")
-            log.info("-------------------------------")
+            log.debug(f"计算出的关节角度: {q_cmd}")
 
             # 增加对求解失败的安全校验 (判断是否返回了 None 或者空数组)
             if q_cmd is None or len(q_cmd) == 0:
@@ -909,19 +954,22 @@ class NeroDualArmServer:
     # TODO: 重构为非阻塞控制
     ## def task():
     ## threading.Thread(target=task, daemon=True).start()
-    def left_gripper_goto(self, width: float, force: float = 1.0, wait: bool = True):
+    def left_gripper_goto(self, width: float, force: float = 1.0):
+        import time as _time
+        _t_start = _time.perf_counter()
+        
         if not self.gripper_enabled or self.left_gripper is None:
             log.warning("[SERVER] Left gripper not available")
             return False
 
         width = float(max(0.0, min(width, 0.1)))
 
-        log.info(f"[SERVER] Left gripper goto: width={width:.3f}, force={force}")
-
         try:
+            _t0 = _time.perf_counter()
             self.left_gripper.move_gripper(width=width, force=force)
-            if wait:
-                time.sleep(1.0)
+            _t_move = (_time.perf_counter() - _t0) * 1000
+            _t_total = (_time.perf_counter() - _t_start) * 1000
+            print(f"[GRIPPER-L] move={_t_move:.1f}ms, total={_t_total:.1f}ms, width={width:.3f}")
             return True
         except Exception as e:
             log.error(f"[SERVER] Left gripper goto failed: {e}")
@@ -985,22 +1033,25 @@ class NeroDualArmServer:
             return {"is_moving": False, "is_grasped": False}
 
     def right_gripper_goto(self, width: float, force: float = 1.0):
+        import time as _time
+        _t_start = _time.perf_counter()
+        
         if not self.gripper_enabled or self.right_gripper is None:
             log.warning("[SERVER] Right gripper not available")
             return False
 
         width = float(max(0.0, min(width, 0.1)))
 
-        log.info(f"[SERVER] Right gripper goto: width={width:.3f}, force={force}")
-
-        # try:
-        #     self.right_gripper.move_gripper(width=width, force=force)
-        #     if wait:
-        #         time.sleep(1.0)
-        #     return True
-        # except Exception as e:
-        #     log.error(f"[SERVER] Right gripper goto failed: {e}")
-        #     return False
+        try:
+            _t0 = _time.perf_counter()
+            self.right_gripper.move_gripper(width=width, force=force)
+            _t_move = (_time.perf_counter() - _t0) * 1000
+            _t_total = (_time.perf_counter() - _t_start) * 1000
+            print(f"[GRIPPER-R] move={_t_move:.1f}ms, total={_t_total:.1f}ms, width={width:.3f}")
+            return True
+        except Exception as e:
+            log.error(f"[SERVER] Right gripper goto failed: {e}")
+            return False
      
     # TODO: 实现逻辑未确定
     def right_gripper_grasp(self, force: float = 1.0, width: float = 0.05): pass
@@ -1124,7 +1175,7 @@ class NeroDualArmServer:
             return False
 
 def start_server(ip: str, port: int = 4242, gripper_enabled: bool = True):
-    server = zerorpc.Server(NeroDualArmServer(gripper_enabled), heartbeat=20.0)
+    server = zerorpc.Server(NeroDualArmServer(gripper_enabled))
     server.bind(f"tcp://{ip}:{port}")
     log.info(f"[SERVER] Listening on tcp://{ip}:{port}")
     server.run()
