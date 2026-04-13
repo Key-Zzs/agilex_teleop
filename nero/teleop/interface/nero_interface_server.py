@@ -64,6 +64,7 @@ class NeroDualArmServer:
                     log.warning("[SERVER] Left arm enable timeout")
                     break
                 time.sleep(0.01)
+            # self.left_robot_go_home()
             log.info("[SERVER] Left arm connected and enabled")
             
         except Exception as e:
@@ -92,6 +93,7 @@ class NeroDualArmServer:
                     log.warning("[SERVER] Right arm enable timeout")
                     break
                 time.sleep(0.01)
+            # self.right_robot_go_home()
             log.info("[SERVER] Right arm connected and enabled")
             
         except Exception as e:
@@ -108,6 +110,7 @@ class NeroDualArmServer:
             try:
                 if self.left_gripper is None:
                     self.left_gripper = self.left_robot.init_effector(self.left_robot.OPTIONS.EFFECTOR.AGX_GRIPPER)
+                    self._setup_gripper(self.left_gripper)
                     log.info("[SERVER] Left gripper initialized")
             except Exception as e:
                 log.error(f"[SERVER] Failed to initialize left gripper: {e}")
@@ -119,6 +122,7 @@ class NeroDualArmServer:
             try:
                 if self.right_gripper is None:
                     self.right_gripper = self.right_robot.init_effector(self.right_robot.OPTIONS.EFFECTOR.AGX_GRIPPER)
+                    self._setup_gripper(self.right_gripper)
             except Exception as e:
                 log.error(f"[SERVER] Failed to initialize right gripper: {e}")
 
@@ -142,10 +146,10 @@ class NeroDualArmServer:
         self.right_cur_pose = None
 
         try:
-            self.left_ik_solver = self.setup_ik_solver(self.left_robot, self.left_cfg, "Left Arm")
-            self.right_ik_solver = self.setup_ik_solver(self.right_robot, self.right_cfg, "Right Arm")
+            self.left_ik_solver = self._setup_ik_solver(self.left_robot, self.left_cfg, "Left Arm")
+            self.right_ik_solver = self._setup_ik_solver(self.right_robot, self.right_cfg, "Right Arm")
         except Exception as e:
-            log.error(f"[ERROR] IK solvers init failed: {e}")
+            log.error(f"[SERVER] IK solvers init failed: {e}")
 
     def _get_current_joints(self, robot, timeout: float = 2.0):
         """Read current joint angles with timeout protection."""
@@ -574,8 +578,11 @@ class NeroDualArmServer:
     def robot_go_home(self):
         if self.left_robot is None or self.right_robot is None:
             return
-        # self.left_robot_go_home()
+        self.left_robot_go_home()
         self.right_robot_go_home()
+        # self._setup_gripper("left")
+        # self._setup_gripper("right")
+        log.info("[SERVER] Robot home setup completed for both arms")
 
     # ==================== ServoJ Control (Joint Servo) ====================
 
@@ -868,7 +875,7 @@ class NeroDualArmServer:
     
     # ==================== Inverse Kinematics ====================
 
-    def setup_ik_solver(self, robot, cfg, name: str, timeout_sec: float = 2.0):
+    def _setup_ik_solver(self, robot, cfg, name: str, timeout_sec: float = 2.0):
         """辅助方法：获取初始关节角，提取限位，并初始化 IK Solver"""
         log.info(f"[{name}] 正在获取当前关节角作为 IK 初始基准...")
         current_pose = None
@@ -907,7 +914,43 @@ class NeroDualArmServer:
     
     # ==================== Gripper (Placeholder) ====================
     
-    # @Key-Zzs: [feat] gripper_goto and gripper_get_state implementation
+    def _setup_gripper(self, gripper):
+        """夹爪初始化：先合后张
+        
+        对每个夹爪执行：
+        1. 合夹爪（width=0.0）
+        2. 等待 0.5 秒
+        3. 张夹爪（width=0.1）
+        4. 等待 0.5 秒
+        """
+        # 夹爪控制
+        if gripper is not None:
+            try:
+                log.info(f"[setup_gripper] Setting up gripper...")
+
+                if(gripper == self.left_gripper):
+                    log.info(f"[setup_gripper] Setting up left gripper...")
+                    self.left_gripper_goto(0.0)
+                    log.info("[setup_gripper] Left gripper closed (width=0.0)")
+                    time.sleep(0.5)
+                    self.left_gripper_goto(0.1)
+                    log.info("[setup_gripper] Left gripper opened (width=0.1)")
+                    time.sleep(0.5)
+                    log.info("[setup_gripper] Left gripper setup completed")
+                else:
+                    log.info(f"[setup_gripper] Setting up right gripper...")
+                    self.right_gripper_goto(0.0)
+                    log.info("[setup_gripper] Right gripper closed (width=0.0)")
+                    time.sleep(0.5)
+                    self.right_gripper_goto(0.1)
+                    log.info("[setup_gripper] Right gripper opened (width=0.1)")
+                    time.sleep(0.5)
+                    log.info("[setup_gripper] Right gripper setup completed")
+            except Exception as e:
+                log.warning(f"[setup_gripper] Failed to setup gripper: {e}")
+        
+        log.info("[setup_gripper] Gripper setup completed for both arms")
+
     # TODO: 重构为非阻塞控制
     ## def task():
     ## threading.Thread(target=task, daemon=True).start()
@@ -1036,7 +1079,7 @@ class NeroDualArmServer:
     # ==================== Utility ====================
     
     # TODO: wait for testing
-    def stop(self, robot_arm: str):
+    def robot_stop(self, robot_arm: str):
         """
         Stops the specified robot arm by triggering an emergency stop.
 
@@ -1065,7 +1108,7 @@ class NeroDualArmServer:
             return True
 
         except Exception as e:
-            log.error(f"[ERROR] servo_j failed: {e}")
+            log.error(f"[SERVER] Robot stop failed: {e}")
             return False
 
 def start_server(ip: str, port: int = 4242, gripper_enabled: bool = True):

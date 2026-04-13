@@ -211,18 +211,33 @@ class NeroDualArmClient:
     # ==================== Utility ====================
     
     def stop(self, arm_name: str):
-        """Stop specified arm."""
+        """Stop specified arm.
+        
+        Args:
+            arm_name: 'left_robot' or 'right_robot'
+        """
         if self.server is None:
+            log.warning("[CLIENT] Server not connected")
             return
-        self.server.stop(arm_name)
+        try:
+            result = self.server.robot_stop(arm_name)
+            log.info(f"[CLIENT] Stop command sent to {arm_name}: {result}")
+        except Exception as e:
+            log.error(f"[CLIENT] Failed to stop {arm_name}: {e}")
     
     def close(self):
         """Close connection."""
         if self.server is not None:
             try:
+                self.server.robot_stop("left_robot")
+                self.server.robot_stop("right_robot")
+            except Exception as e:
+                log.warning(f"[CLIENT] Error stopping robots: {e}")
+            try:
                 self.server.close()
-            except:
-                pass
+            except Exception as e:
+                log.debug(f"[CLIENT] Error closing server connection: {e}")
+            self.server = None
 
 
 if __name__ == "__main__":
