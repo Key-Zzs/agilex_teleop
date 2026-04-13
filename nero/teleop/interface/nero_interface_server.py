@@ -188,6 +188,19 @@ class TaskQueueManager:
         """获取活跃任务数量"""
         with self.lock:
             return len(self.active_tasks)
+    
+    def has_active_home_task(self) -> bool:
+        """检查是否有home任务在执行"""
+        with self.lock:
+            home_task_types = [
+                TaskType.LEFT_ROBOT_GO_HOME,
+                TaskType.RIGHT_ROBOT_GO_HOME,
+                TaskType.ROBOT_GO_HOME
+            ]
+            for task in self.active_tasks.values():
+                if task.task_type in home_task_types:
+                    return True
+            return False
 
 # ==================== Task State Machine ====================
 class TaskStateMachine:
@@ -252,17 +265,135 @@ class TaskStateMachine:
     
     def _execute_left_robot_go_home(self, task: Task) -> bool:
         """执行左机械臂回零任务"""
-        return self.server._go_home("left_robot")
+        def _home_and_update():
+            try:
+                success = self.server._go_home("left_robot")
+                
+                if success:
+                    with self.server.home_flag_lock:
+                        current_pose = self.server._get_current_pose(
+                            self.server.left_robot, 
+                            self.server.left_ik_solver
+                        )
+                        if current_pose is not None:
+                            self.server.target_pose_left = current_pose
+                            self.server.left_state = "IDLE"
+                            log.info(f"[HOME] Updated target_pose_left: {current_pose}")
+                        else:
+                            log.warning(f"[HOME] Failed to get current pose after home")
+                else:
+                    with self.server.home_flag_lock:
+                        self.server.left_state = "IDLE"
+                    log.error(f"[HOME] Left robot go home failed")
+                    
+            except Exception as e:
+                log.error(f"[HOME ERROR] {e}")
+                with self.server.home_flag_lock:
+                    self.server.left_state = "IDLE"
+        
+        with self.server.home_flag_lock:
+            self.server.left_state = "HOMING"
+            self.server.left_home_busy = True
+        
+        import threading
+        threading.Thread(target=_home_and_update, daemon=True).start()
+        
+        return True
     
     def _execute_right_robot_go_home(self, task: Task) -> bool:
         """执行右机械臂回零任务"""
-        return self.server._go_home("right_robot")
+        def _home_and_update():
+            try:
+                success = self.server._go_home("right_robot")
+                
+                if success:
+                    with self.server.home_flag_lock:
+                        current_pose = self.server._get_current_pose(
+                            self.server.right_robot, 
+                            self.server.right_ik_solver
+                        )
+                        if current_pose is not None:
+                            self.server.target_pose_right = current_pose
+                            self.server.right_state = "IDLE"
+                            log.info(f"[HOME] Updated target_pose_right: {current_pose}")
+                        else:
+                            log.warning(f"[HOME] Failed to get current pose after home")
+                else:
+                    with self.server.home_flag_lock:
+                        self.server.right_state = "IDLE"
+                    log.error(f"[HOME] Right robot go home failed")
+                    
+            except Exception as e:
+                log.error(f"[HOME ERROR] {e}")
+                with self.server.home_flag_lock:
+                    self.server.right_state = "IDLE"
+        
+        with self.server.home_flag_lock:
+            self.server.right_state = "HOMING"
+            self.server.right_home_busy = True
+        
+        import threading
+        threading.Thread(target=_home_and_update, daemon=True).start()
+        
+        return True
     
     def _execute_robot_go_home(self, task: Task) -> bool:
         """执行双机械臂回零任务"""
-        left_success = self.server._go_home("left_robot")
-        right_success = self.server._go_home("right_robot")
-        return left_success and right_success
+        def _home_and_update():
+            try:
+                left_success = self.server._go_home("left_robot")
+                right_success = self.server._go_home("right_robot")
+                
+                if left_success:
+                    with self.server.home_flag_lock:
+                        current_pose = self.server._get_current_pose(
+                            self.server.left_robot, 
+                            self.server.left_ik_solver
+                        )
+                        if current_pose is not None:
+                            self.server.target_pose_left = current_pose
+                            self.server.left_state = "IDLE"
+                            log.info(f"[HOME] Updated target_pose_left: {current_pose}")
+                        else:
+                            log.warning(f"[HOME] Failed to get left current pose after home")
+                else:
+                    with self.server.home_flag_lock:
+                        self.server.left_state = "IDLE"
+                    log.error(f"[HOME] Left robot go home failed")
+                
+                if right_success:
+                    with self.server.home_flag_lock:
+                        current_pose = self.server._get_current_pose(
+                            self.server.right_robot, 
+                            self.server.right_ik_solver
+                        )
+                        if current_pose is not None:
+                            self.server.target_pose_right = current_pose
+                            self.server.right_state = "IDLE"
+                            log.info(f"[HOME] Updated target_pose_right: {current_pose}")
+                        else:
+                            log.warning(f"[HOME] Failed to get right current pose after home")
+                else:
+                    with self.server.home_flag_lock:
+                        self.server.right_state = "IDLE"
+                    log.error(f"[HOME] Right robot go home failed")
+                    
+            except Exception as e:
+                log.error(f"[HOME ERROR] {e}")
+                with self.server.home_flag_lock:
+                    self.server.left_state = "IDLE"
+                    self.server.right_state = "IDLE"
+        
+        with self.server.home_flag_lock:
+            self.server.left_state = "HOMING"
+            self.server.right_state = "HOMING"
+            self.server.left_home_busy = True
+            self.server.right_home_busy = True
+        
+        import threading
+        threading.Thread(target=_home_and_update, daemon=True).start()
+        
+        return True
     
     def _execute_servo_p_ol(self, task: Task) -> bool:
         """执行位姿控制任务"""
@@ -352,7 +483,7 @@ class NeroDualArmServer:
         # Initialize IK solver
         self.left_ik_solver = None
         self.right_ik_solver = None
-        self.track_freq = 20.0
+        self.track_freq = 50.0
         self.dt = 1.0 / self.track_freq
         # servo_p 开环控制记录的当前位姿
 
@@ -381,10 +512,31 @@ class NeroDualArmServer:
         self.right_home_busy = False
 
         # control thread related
-        self.control_freq = 100.0
+        self.control_freq = 20.0
         self.control_dt = 1.0 / self.control_freq
 
         self.control_running = True
+        
+        # 机械臂访问锁，防止任务执行器和control loop同时访问
+        self.left_robot_lock = threading.Lock()
+        self.right_robot_lock = threading.Lock()
+        
+        # home任务标志锁，确保线程可见性
+        self.home_flag_lock = threading.Lock()
+        
+        # IK缓存变量（减少overrun）
+        self.last_q_cmd_left = None
+        self.last_q_cmd_right = None
+        self.ik_counter = 0
+        self.ik_divider = 2  # IK降到50Hz
+        
+        # move_js降频变量（解决overrun）
+        self.cmd_counter = 0
+        self.cmd_divider = 5  # 100Hz → 实际发送20Hz
+        
+        # 状态机变量
+        self.left_state = "IDLE"
+        self.right_state = "IDLE"
 
         # ==================== Task Queue & State Machine ====================
         self.task_queue_manager = TaskQueueManager()
@@ -647,11 +799,13 @@ class NeroDualArmServer:
                 ik_solver = self.left_ik_solver
                 home = [0.0, -0.13, 0.0, 1.87, 0.0, 0.0, -0.17]
                 target_pose_attr = "target_pose_left"
+                print(f"current_pose_left: {self.target_pose_left}")
             elif robot_arm == "right_robot":
                 robot = self.right_robot
                 ik_solver = self.right_ik_solver
                 home = [0.0, -0.13, 0.0, 1.87, 0.0, 0.0, -0.17]
                 target_pose_attr = "target_pose_right"
+                print(f"current_pose_right: {self.target_pose_right}")
             else:
                 message = f"Invalid robot_arm: {robot_arm}"
                 log.error(f"[{robot_arm}_go_home] {message}")
@@ -714,26 +868,53 @@ class NeroDualArmServer:
                 log.error(f"[{robot_arm}_go_home] {message}")
                 return False
 
-            # Step 5: 等待运动完成
+            # Step 5: 等待运动完成（使用 motion_status 检查）
             log.info(f"[{robot_arm}_go_home] Waiting for motion to complete...")
-            time.sleep(3.0)
+            timeout = 10.0
+            start_t = time.monotonic()
+            motion_in_progress = True
+            
+            while time.monotonic() - start_t < timeout:
+                try:
+                    status = robot.get_arm_status()
+                    if status is not None and hasattr(status, 'msg'):
+                        motion_status = status.msg.motion_status
+                        if motion_status == 0:  # 0 表示没有运动
+                            motion_in_progress = False
+                            log.info(f"[{robot_arm}_go_home] Motion completed")
+                            break
+                        else:
+                            log.debug(f"[{robot_arm}_go_home] Motion in progress, status={motion_status}")
+                except Exception as e:
+                    log.debug(f"[{robot_arm}_go_home] Failed to get arm status: {e}")
+                
+                time.sleep(0.1)
+            
+            if motion_in_progress:
+                log.warning(f"[{robot_arm}_go_home] Motion timeout after {timeout}s, proceeding anyway")
 
             # Step 6: 更新目标位姿
             if robot is not None and ik_solver is not None:
                 from pyAgxArm.utiles.tf import rot_to_rpy
                 try:
                     current_joints = None
-                    timeout = 2.0
-                    start_t = time.monotonic()
-                    while current_joints is None:
-                        ja = robot.get_joint_angles()
-                        if ja is not None:
-                            current_joints = ja.msg
-                            break
-                        if time.monotonic() - start_t > timeout:
-                            log.warning(f"[{robot_arm}_go_home] get_joint_angles timeout")
-                            break
-                        time.sleep(0.01)
+                    max_retries = 25
+                    retry_interval = 0.1
+                    
+                    for retry in range(max_retries):
+                        try:
+                            ja = robot.get_joint_angles()
+                            if ja is not None and hasattr(ja, 'msg'):
+                                current_joints = ja.msg
+                                if current_joints is not None and len(current_joints) == 7:
+                                    log.info(f"[{robot_arm}_go_home] Successfully got joint angles at retry {retry + 1}")
+                                    print(f"Current joints: {current_joints}")
+                                    break
+                        except Exception as e:
+                            log.debug(f"[{robot_arm}_go_home] get_joint_angles attempt {retry + 1} failed: {e}")
+                        
+                        if retry < max_retries - 1:
+                            time.sleep(retry_interval)
                     
                     if current_joints is not None:
                         q_current = np.array(current_joints, dtype=float)
@@ -742,9 +923,21 @@ class NeroDualArmServer:
                         fk_rpy = np.asarray(rot_to_rpy(T_fk[:3, :3].tolist()), dtype=float)
                         target_pose = np.concatenate([fk_xyz, fk_rpy])
                         setattr(self, target_pose_attr, target_pose)
-                        log.info(f"[{robot_arm}_go_home] Updated {target_pose_attr}: {target_pose}")
+                        print(f"[{robot_arm}_go_home] Updated {target_pose_attr}: {target_pose}")
                     else:
-                        log.warning(f"[{robot_arm}_go_home] Failed to get current joints, pose not updated")
+                        log.warning(f"[{robot_arm}_go_home] Failed to get current joints after {max_retries} retries, using home position for FK")
+                        try:
+                            q_current = np.array(home, dtype=float)
+                            T_fk = fk(q_current, ik_solver.nero_params)
+                            fk_xyz = np.asarray(T_fk[:3, 3], dtype=float)
+                            fk_rpy = np.asarray(rot_to_rpy(T_fk[:3, :3].tolist()), dtype=float)
+                            target_pose = np.concatenate([fk_xyz, fk_rpy])
+                            setattr(self, target_pose_attr, target_pose)
+                            log.info(f"[{robot_arm}_go_home] Updated {target_pose_attr} using home position: {target_pose}")
+                        except Exception as e:
+                            message = f"Failed to update pose using home position: {e}"
+                            log.error(f"[{robot_arm}_go_home] {message}")
+                            return False
                 except Exception as e:
                     message = f"Failed to update pose: {e}"
                     log.error(f"[{robot_arm}_go_home] {message}")
@@ -752,6 +945,9 @@ class NeroDualArmServer:
 
             message = "Home sequence completed successfully"
             log.info(f"[{robot_arm}_go_home] {message}")
+            # Step 6: 等待运动完成
+            log.info(f"[{robot_arm}_go_home] Waiting for motion to complete...")
+            # time.sleep(3.0)
             return True
 
         except Exception as e:
@@ -936,7 +1132,7 @@ class NeroDualArmServer:
             task_id = self.task_queue_manager.add_task(
                 task_type=TaskType.SERVO_P_OL,
                 params={'robot_arm': robot_arm, 'pose': pose.tolist(), 'delta': delta},
-                priority=TaskPriority.HIGH
+                priority=TaskPriority.NORMAL
             )
             log.info(f"[SERVER] Servo P OL task queued: {task_id}")
             return True
@@ -1025,7 +1221,7 @@ class NeroDualArmServer:
         task_id = self.task_queue_manager.add_task(
             task_type=TaskType.LEFT_GRIPPER_GOTO,
             params={'width': width, 'force': force},
-            priority=TaskPriority.NORMAL
+            priority=TaskPriority.LOW
         )
         log.info(f"[SERVER] Left gripper goto task queued: {task_id}")
         return True
@@ -1044,7 +1240,7 @@ class NeroDualArmServer:
         task_id = self.task_queue_manager.add_task(
             task_type=TaskType.RIGHT_GRIPPER_GOTO,
             params={'width': width, 'force': force},
-            priority=TaskPriority.NORMAL
+            priority=TaskPriority.LOW
         )
         log.info(f"[SERVER] Right gripper goto task queued: {task_id}")
         return True
@@ -1233,49 +1429,74 @@ class NeroDualArmServer:
         无参数，无返回值
         """
         sync_counter = 0
-        sync_interval = 10  # 每10个控制周期同步一次IK状态（100ms）
+        sync_interval = 20  # 每10个控制周期同步一次IK状态（100ms）
         
         while self.control_running:
             start = time.perf_counter()
             sync_counter += 1
 
             try:
-                # ===== IK状态同步（降低频率） =====
-                if sync_counter % sync_interval == 0:
-                    try:
-                        if self.left_robot is not None and self.left_ik_solver is not None:
-                            ja = self.left_robot.get_joint_angles()
-                            if ja is not None:
-                                self.left_ik_solver.init_state(ja.msg)
+                with self.home_flag_lock:
+                    has_home_task = self.left_home_busy or self.right_home_busy
+                
+                # ===== 方案2：home期间彻底停control_loop动作 =====
+                if self.left_state == "HOMING" or self.right_state == "HOMING":
+                    time.sleep(self.control_dt)
+                    continue
+                
+                # ===== LEFT SERVO =====
+                if self.left_state != "IDLE":
+                    pass
+                else:
+                    if self.target_pose_left is not None:
+                        self.ik_counter += 1
+                        self.cmd_counter += 1
                         
-                        if self.right_robot is not None and self.right_ik_solver is not None:
-                            ja = self.right_robot.get_joint_angles()
-                            if ja is not None:
-                                self.right_ik_solver.init_state(ja.msg)
-                    except Exception as e:
-                        log.warning(f"[CONTROL] IK sync failed: {e}")
+                        # IK降频
+                        if self.ik_counter % self.ik_divider == 0:
+                            try:
+                                q_cmd = self.left_ik_solver.solve(self.target_pose_left)
+                                if q_cmd is not None:
+                                    if isinstance(q_cmd, np.ndarray):
+                                        q_cmd = q_cmd.tolist()
+                                    self.last_q_cmd_left = q_cmd
+                            except Exception as e:
+                                log.error(f"[CONTROL] Left arm IK solve failed: {e}")
+                        
+                        # ❗关键：move_js降频
+                        if self.cmd_counter % self.cmd_divider == 0:
+                            if self.last_q_cmd_left is not None:
+                                try:
+                                    self.left_robot.move_js(self.last_q_cmd_left)
+                                except Exception as e:
+                                    log.error(f"[CONTROL] Left arm move_js failed: {e}")
 
-                # ===== LEFT POSE控制 =====
-                if self.target_pose_left is not None:
-                    try:
-                        q_cmd = self.left_ik_solver.solve(self.target_pose_left)
-                        if q_cmd is not None:
-                            if isinstance(q_cmd, np.ndarray):
-                                q_cmd = q_cmd.tolist()
-                            self.left_robot.move_js(q_cmd)
-                    except Exception as e:
-                        log.error(f"[CONTROL] Left arm IK solve failed: {e}")
-
-                # ===== RIGHT POSE控制 =====
-                if self.target_pose_right is not None:
-                    try:
-                        q_cmd = self.right_ik_solver.solve(self.target_pose_right)
-                        if q_cmd is not None:
-                            if isinstance(q_cmd, np.ndarray):
-                                q_cmd = q_cmd.tolist()
-                            self.right_robot.move_js(q_cmd)
-                    except Exception as e:
-                        log.error(f"[CONTROL] Right arm IK solve failed: {e}")
+                # ===== RIGHT SERVO =====
+                if self.right_state != "IDLE":
+                    pass
+                else:
+                    if self.target_pose_right is not None:
+                        self.ik_counter += 1
+                        self.cmd_counter += 1
+                        
+                        # IK降频
+                        if self.ik_counter % self.ik_divider == 0:
+                            try:
+                                q_cmd = self.right_ik_solver.solve(self.target_pose_right)
+                                if q_cmd is not None:
+                                    if isinstance(q_cmd, np.ndarray):
+                                        q_cmd = q_cmd.tolist()
+                                    self.last_q_cmd_right = q_cmd
+                            except Exception as e:
+                                log.error(f"[CONTROL] Right arm IK solve failed: {e}")
+                        
+                        # 关键：move_js降频
+                        if self.cmd_counter % self.cmd_divider == 0:
+                            if self.last_q_cmd_right is not None:
+                                try:
+                                    self.right_robot.move_js(self.last_q_cmd_right)
+                                except Exception as e:
+                                    log.error(f"[CONTROL] Right arm move_js failed: {e}")
 
                 # Gripper和Home任务现在由任务执行器处理，不再在此处处理
 
@@ -1292,7 +1513,7 @@ class NeroDualArmServer:
             if sleep_time > 0:
                 time.sleep(sleep_time)
             else:
-                log.warning(f"[CONTROL] Control loop overrun by {-sleep_time:.3f}s")
+                log.warning(f"[WARN] Control loop overrun: {dt*1000:.2f} ms")
 
 def start_server(ip: str, port: int = 4242, gripper_enabled: bool = True):
     server = zerorpc.Server(NeroDualArmServer(gripper_enabled))
