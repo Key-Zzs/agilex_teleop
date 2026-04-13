@@ -383,30 +383,6 @@ class NeroDualArmServer:
             log.error("Left robot not initialized")
             return
 
-        # # 检查机械臂是否已正确初始化
-        # if not hasattr(self.left_robot, '_ctx') or self.left_robot._ctx is None:
-        #     log.warning("Left robot not properly initialized (_ctx is None), skipping reset")
-        #     return
-
-        # # 检查是否已连接 (需要先检查 _ctx 是否存在且不为 None)
-        # try:
-        #     if self.left_robot.is_connected():
-        #         log.info("Left robot already connected, skipping reconnection")
-        #         return
-        # except (AttributeError, TypeError) as e:
-        #     log.warning(f"Left robot connection check failed: {e}, skipping reset")
-        #     return
-
-        # try:
-        #     log.info("正在连接机械臂...")
-        #     self.left_robot.connect()
-        # except ValueError as e:
-        #     if "does not exist" in str(e):
-        #         log.warning(f"Left CAN interface not found, skipping left robot reset: {e}")
-        #         return
-        #     raise
-        # time.sleep(0.5)
-
         log.info("\n--- 开始重置 ---")
         log.info("正在清除急停锁死标志...")
         self.left_robot.reset() 
@@ -439,11 +415,12 @@ class NeroDualArmServer:
         log.info("[DEBUG] Moving to home: %s", home)
         self.left_robot.move_j(home)
 
-        result = self.left_robot.get_joint_angles()
-        log.info("当前关节角度:", result.msg)
-
-        time.sleep(3.0)  # 等待运动完成
-        log.info("已回到初始位置")
+        # 等待运动完成
+        motion_complete = self._wait_for_motion_complete(self.left_robot, home, timeout=10.0)
+        if not motion_complete:
+            log.warning("[left_robot_go_home] Motion did not complete within timeout")
+        else:
+            log.info("已回到初始位置")
 
         # 更新 left_cur_pose
         if self.left_robot is not None and self.left_ik_solver is not None:
@@ -482,30 +459,6 @@ class NeroDualArmServer:
             log.error("Right robot not initialized")
             return
 
-        # # 检查机械臂是否已正确初始化
-        # if not hasattr(self.right_robot, '_ctx') or self.right_robot._ctx is None:
-        #     log.warning("Right robot not properly initialized (_ctx is None), skipping reset")
-        #     return
-
-        # # 检查是否已连接 (需要先检查 _ctx 是否存在且不为 None)
-        # try:
-        #     if self.right_robot.is_connected():
-        #         log.info("Right robot already connected, skipping reconnection")
-        #         return
-        # except (AttributeError, TypeError) as e:
-        #     log.warning(f"Right robot connection check failed: {e}, skipping reset")
-        #     return
-
-        # try:
-        #     log.info("正在连接机械臂...")
-        #     self.right_robot.connect()
-        # except ValueError as e:
-        #     if "does not exist" in str(e):
-        #         log.warning(f"Right CAN interface not found, skipping right robot reset: {e}")
-        #         return
-        #     raise
-        # time.sleep(0.5)
-
         log.info("\n--- 开始重置 ---")
         log.info("正在清除急停锁死标志...")
         self.right_robot.reset() 
@@ -538,11 +491,13 @@ class NeroDualArmServer:
         log.info("[DEBUG] Moving to home: %s", home)
         self.right_robot.move_j(home)
         print("Right joints:", home)
-        result = self.right_robot.get_joint_angles()
-        log.info("当前关节角度:", result.msg)
-
-        time.sleep(3.0)  # 等待运动完成
-        log.info("已回到初始位置")
+        
+        # 等待运动完成（替代固定的 time.sleep(3.0)）
+        motion_complete = self._wait_for_motion_complete(self.right_robot, home, timeout=10.0)
+        if not motion_complete:
+            log.warning("[right_robot_go_home] Motion did not complete within timeout")
+        else:
+            log.info("已回到初始位置")
 
         # 更新 right_cur_pose
         if self.right_robot is not None and self.right_ik_solver is not None:
@@ -1076,6 +1031,63 @@ class NeroDualArmServer:
             log.error(f"[SERVER] Right gripper state failed: {e}")
             return {"is_moving": False, "is_grasped": False}
     
+    def _wait_for_motion_complete(self, robot, target_joints: list, timeout: float = 10.0, tolerance: float = 0.01):
+        """
+        等待机械臂运动完成
+        
+        Args:
+            robot: 机械臂对象
+            target_joints: 目标关节角度（弧度）
+            timeout: 超时时间（秒）
+            tolerance: 位置容差（弧度）
+        
+        Returns:
+            bool: 成功到达目标返回 True，超时返回 False
+        """
+        start_t = time.monotonic()
+        target = np.asarray(target_joints, dtype=float)
+        
+        while time.monotonic() - start_t < timeout:
+            try:
+                # 获取当前关节角度
+                result = robot.get_joint_angles()
+                if result is None:
+                    time.sleep(0.05)
+                    continue
+                
+                current = np.asarray(result.msg, dtype=float)
+                
+                # 检查是否到达目标（所有关节都在容差范围内）
+                if np.allclose(current, target, atol=tolerance):
+                    log.info(f"[wait_for_motion] Motion completed! Current: {current.round(3)}, Target: {target.round(3)}")
+                    return True
+                
+                # 检查是否还在运动（通过motion_status）
+                status = robot.get_arm_status()
+                if status is not None and status.msg.motion_status == 0:
+                    # motion_status == 0 表示静止
+                    if np.allclose(current, target, atol=tolerance):
+                        log.info(f"[wait_for_motion] Motion stopped at target. Current: {current.round(3)}, Target: {target.round(3)}")
+                        return True
+                    else:
+                        log.warning(f"[wait_for_motion] Motion stopped but not at target! Current: {current.round(3)}, Target: {target.round(3)}")
+                        return False
+                
+                time.sleep(0.1)
+                
+            except Exception as e:
+                log.error(f"[wait_for_motion] Error checking motion status: {e}")
+                time.sleep(0.1)
+        
+        # 超时：检查当前位置
+        result = robot.get_joint_angles()
+        if result is not None:
+            current = np.asarray(result.msg, dtype=float)
+            error = np.linalg.norm(current - target)
+            log.warning(f"[wait_for_motion] Timeout after {timeout}s. Error: {error:.4f} rad")
+        
+        return False
+
     # ==================== Utility ====================
     
     # TODO: wait for testing
@@ -1112,7 +1124,7 @@ class NeroDualArmServer:
             return False
 
 def start_server(ip: str, port: int = 4242, gripper_enabled: bool = True):
-    server = zerorpc.Server(NeroDualArmServer(gripper_enabled))
+    server = zerorpc.Server(NeroDualArmServer(gripper_enabled), heartbeat=20.0)
     server.bind(f"tcp://{ip}:{port}")
     log.info(f"[SERVER] Listening on tcp://{ip}:{port}")
     server.run()
