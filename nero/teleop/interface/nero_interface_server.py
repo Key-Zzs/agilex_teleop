@@ -377,7 +377,6 @@ class NeroDualArmServer:
         self.left_robot_move_to_ee_pose(left_pose, delta=delta, wait=True)
         self.right_robot_move_to_ee_pose(right_pose, delta=delta, wait=True)
 
-    # @Key-Zzs: [feat] left_robot_go_home() and right_robot_go_home()
     def left_robot_go_home(self):
         if self.left_robot is None:
             log.error("Left robot not initialized")
@@ -416,7 +415,7 @@ class NeroDualArmServer:
         self.left_robot.move_j(home)
 
         # 等待运动完成
-        motion_complete = self._wait_for_motion_complete(self.left_robot, home, timeout=10.0)
+        motion_complete = self._wait_for_motion_complete(self.left_robot, home, timeout=20.0)
         if not motion_complete:
             log.warning("[left_robot_go_home] Motion did not complete within timeout")
         else:
@@ -453,7 +452,6 @@ class NeroDualArmServer:
             except Exception as e:
                 log.error(f"[left_robot_go_home] Failed to update pose: {e}")
     
-    # @Key-Zzs: [feat] right_robot_go_home()
     def right_robot_go_home(self):
         if self.right_robot is None:
             log.error("Right robot not initialized")
@@ -487,11 +485,12 @@ class NeroDualArmServer:
         self.right_robot.set_speed_percent(30)
 
         home = [0.0, -0.13, 0.0, 1.87, 0.0, 0.0, -0.17]
-        
+
         log.info("[DEBUG] Moving to home: %s", home)
         self.right_robot.move_j(home)
+        
         # 等待运动完成
-        motion_complete = self._wait_for_motion_complete(self.right_robot, home, timeout=10.0)
+        motion_complete = self._wait_for_motion_complete(self.right_robot, home, timeout=20.0)
         if not motion_complete:
             log.warning("[right_robot_go_home] Motion did not complete within timeout")
         else:
@@ -529,12 +528,24 @@ class NeroDualArmServer:
                 log.error(f"[right_robot_go_home] Failed to update pose: {e}")
 
     def robot_go_home(self):
+        """双臂同时 go home（并行执行）"""
         if self.left_robot is None or self.right_robot is None:
             return
-        self.left_robot_go_home()
-        self.right_robot_go_home()
-        # self._setup_gripper("left")
-        # self._setup_gripper("right")
+        
+        import threading
+        
+        # 创建两个线程并行执行
+        left_thread = threading.Thread(target=self.left_robot_go_home, name="left_go_home")
+        right_thread = threading.Thread(target=self.right_robot_go_home, name="right_go_home")
+        
+        # 同时启动
+        left_thread.start()
+        right_thread.start()
+        
+        # 等待两个线程都完成
+        left_thread.join()
+        right_thread.join()
+        
         log.info("[SERVER] Robot home setup completed for both arms")
 
     # ==================== ServoJ Control (Joint Servo) ====================
