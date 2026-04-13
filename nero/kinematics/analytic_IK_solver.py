@@ -59,23 +59,31 @@ class Solver:
         """
         求解目标位姿对应的关节角
         :param target_pose: 6D pose [x, y, z, roll, pitch, yaw]
-        :return: 7维关节角
+        :return: 7维关节角，失败返回 None
         """
         T_target = self._pose_to_matrix(target_pose)
         
         # 使用 solve_pose_continuous_with_state 求解
-        q_cmd, report, self.state = solve_pose_continuous_with_state(
+        q_cmd, report, new_state = solve_pose_continuous_with_state(
             T_target, state=self.state, p=self.nero_params, n_psi=self.n_psi, continuity=self.continuity
         )
         
         if q_cmd is None:
-            # IK 求解失败，返回上一帧的关节角
+            # IK 求解失败，不更新状态，返回 None
             print(f"⚠️ IK 求解失败: {report.get('method')}")
             print(f"   目标位姿: x={target_pose[0]:.3f}, y={target_pose[1]:.3f}, z={target_pose[2]:.3f}")
             print(f"   候选解数量: {report.get('candidate_count', 0)}")
-            return self.state.q_prev.copy()
+            return None
         
         # 关节限位裁剪
-        q_cmd = self._clamp_joints(q_cmd)
+        q_cmd_clamped = self._clamp_joints(q_cmd)
         
-        return q_cmd
+        # 成功时更新状态（使用裁剪后的关节角）
+        self.state = ContinuityRuntimeState(
+            q_prev=q_cmd_clamped,
+            q_prev2=self.state.q_prev.copy() if self.state.q_prev is not None else q_cmd_clamped.copy(),
+            theta0_prev=new_state.theta0_prev,
+            q_lock=q_cmd_clamped,
+        )
+        
+        return q_cmd_clamped
