@@ -1,8 +1,8 @@
 # AgxArm_teleop
 
----
-
 [English](./README.md) | [中文](./README_zh-CN.md)
+
+---
 
 AgileX nero dual-arm teleoperation system, developed based on the AgileX robotic arm SDK.
 
@@ -13,6 +13,19 @@ Required equipment for this project:
 - **Server PC** (requires higher running memory) x 1: Used to run the Server project to control the robotic arms (connected to CAN-USB adapters linked to AgileX robotic arms)
 - **Client PC** (requires larger disk space) x 1: Used to run the Client project for teleoperating the robotic arms and collecting data (connected to three camera sensors)
 - AgileX official **CAN-USB adapter** x 2
+
+---
+
+## TODOs
+
+- [ ] Arm Control Issues
+  - [ ] Motion filtering ([1€ filter](https://github.com/casiez/OneEuroFilter))
+  - [ ] IK issues (consult AgileX/Songling technical support)
+    - [ ] Control frequency?
+    - [ ] Solving method (consider using other IK libraries with [nero urdf model](https://github.com/agilexrobotics/agx_arm_urdf), recommended [ikpy](https://github.com/ikpy/ikpy) and [frax](https://github.com/danielpmorton/frax))
+- [ ] Gripper Issues
+  - [ ] [Pika gripper SDK](https://github.com/agilexrobotics/pika_sdk) adaptation
+  - [ ] Response speed (first port Pika gripper SDK to project, if issues persist after testing then investigate SDK and [Server project](nero/teleop/interface/nero_interface_server.py) implementation of `left_gripper_goto()` and `right_gripper_goto()`)
 
 ---
 
