@@ -345,13 +345,13 @@ class NeroDualArm(Robot):
         
         try:
             t_query_start = time.perf_counter()
-            left_joint_pos = self._robot.left_robot_get_joint_positions()
+            # left_joint_pos = self._robot.left_robot_get_joint_positions()
             left_ee_pose = self._robot.left_robot_get_ee_pose()
             t_query_end = time.perf_counter()
             logger.info(f"[TIMING] left robot query: {(t_query_end-t_query_start)*1000:.2f}ms")
             
             t_query_start = time.perf_counter()
-            right_joint_pos = self._robot.right_robot_get_joint_positions()
+            # right_joint_pos = self._robot.right_robot_get_joint_positions()
             right_ee_pose = self._robot.right_robot_get_ee_pose()
             t_query_end = time.perf_counter()
             logger.info(f"[TIMING] right robot query: {(t_query_end-t_query_start)*1000:.2f}ms")

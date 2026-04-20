@@ -43,11 +43,17 @@ class NeroDualArmServer:
 
         # Initialize left arm
         self.left_robot = None
+        self.left_gripper = None
         
         try:
             from pyAgxArm import create_agx_arm_config, AgxArmFactory
             self.left_cfg = create_agx_arm_config(robot="nero", comm="can", channel="can_left")
             self.left_robot = AgxArmFactory.create_arm(self.left_cfg)
+            
+            # ⚠️ 关键步骤：在 connect 前初始化末端执行器
+            if gripper_enabled:
+                self.left_gripper = self.left_robot.init_effector(self.left_robot.OPTIONS.EFFECTOR.AGX_GRIPPER)
+            
             self.left_robot.connect()
             time.sleep(0.3)
 
@@ -64,7 +70,7 @@ class NeroDualArmServer:
                     log.warning("[SERVER] Left arm enable timeout")
                     break
                 time.sleep(0.01)
-            # self.left_robot_go_home()
+            self.left_robot_go_home()
             log.info("[SERVER] Left arm connected and enabled")
             
         except Exception as e:
@@ -72,13 +78,19 @@ class NeroDualArmServer:
 
         # Initialize right arm
         self.right_robot = None
+        self.right_gripper = None
         
         try:
             from pyAgxArm import create_agx_arm_config, AgxArmFactory
             self.right_cfg = create_agx_arm_config(robot="nero", comm="can", channel="can_right")
             self.right_robot = AgxArmFactory.create_arm(self.right_cfg)
+            
+            # ⚠️ 关键步骤：在 connect 前初始化末端执行器
+            if gripper_enabled:
+                self.right_gripper = self.right_robot.init_effector(self.right_robot.OPTIONS.EFFECTOR.AGX_GRIPPER)
+            
             self.right_robot.connect()
-            time.sleep(0.3)
+            time.sleep(0.5)
 
             # 清除底层错误状态（防止之前卡在透传或急停模式）
             self.right_robot.set_normal_mode()
@@ -93,7 +105,7 @@ class NeroDualArmServer:
                     log.warning("[SERVER] Right arm enable timeout")
                     break
                 time.sleep(0.01)
-            # self.right_robot_go_home()
+            self.right_robot_go_home()
             log.info("[SERVER] Right arm connected and enabled")
             
         except Exception as e:
@@ -103,32 +115,25 @@ class NeroDualArmServer:
         log.info("Nero Dual-Arm Server Ready")
         log.info("=" * 50)
 
-        # Initialize left gripper
-        self.left_gripper = None
-
+        # Setup grippers (初始化已在 connect 前完成，这里只做开合测试)
         if gripper_enabled:
             try:
-                if self.left_gripper is None:
-                    self.left_gripper = self.left_robot.init_effector(self.left_robot.OPTIONS.EFFECTOR.AGX_GRIPPER)
+                if self.left_gripper is not None:
                     self._setup_gripper(self.left_gripper)
                     log.info("[SERVER] Left gripper initialized")
             except Exception as e:
-                log.error(f"[SERVER] Failed to initialize left gripper: {e}")
+                log.error(f"[SERVER] Failed to setup left gripper: {e}")
         
-        # Initialize right gripper
-        self.right_gripper = None
-
-        if gripper_enabled:
             try:
-                if self.right_gripper is None:
-                    self.right_gripper = self.right_robot.init_effector(self.right_robot.OPTIONS.EFFECTOR.AGX_GRIPPER)
+                if self.right_gripper is not None:
                     self._setup_gripper(self.right_gripper)
+                    log.info("[SERVER] Right gripper initialized")
             except Exception as e:
-                log.error(f"[SERVER] Failed to initialize right gripper: {e}")
+                log.error(f"[SERVER] Failed to setup right gripper: {e}")
 
-        log.info("=" * 50)
-        log.info("Nero Dual-Gripper Server Ready")
-        log.info("=" * 50)
+            log.info("=" * 50)
+            log.info("Nero Dual-Gripper Server Ready")
+            log.info("=" * 50)
 
         # Initialize IK solver
         self.left_ik_solver = None
@@ -141,6 +146,23 @@ class NeroDualArmServer:
         self.max_rot_step_rad = 0.35
         self.max_joint_step_rad = 0.1
         self.ik_resync_thresh_rad = 0.1
+        self.max_ik_solve_ms = 30.0
+        # If IK falls into expensive global fallback, skip a short window to avoid repeated stalls.
+        self.ik_fail_cooldown_s = 0.25
+        self._ik_skip_until = {"left_robot": 0.0, "right_robot": 0.0}
+        # Adaptive attenuation after IK failures: shrink delta commands and briefly freeze orientation.
+        self.ik_delta_decay = 0.6
+        self.ik_delta_recover = 0.08
+        self.ik_delta_min_scale = 0.2
+        self.ik_orientation_freeze_s = 0.20
+        self._ik_delta_scale = {"left_robot": 1.0, "right_robot": 1.0}
+        self._ik_freeze_rot_until = {"left_robot": 0.0, "right_robot": 0.0}
+        # High-frequency stdout printing can introduce control-loop jitter.
+        self.enable_servo_timing_print = False
+        self.servo_timing_print_every_n = 50
+        # Cache last gripper command to suppress redundant no-op writes.
+        self._last_left_gripper_cmd = None
+        self._last_right_gripper_cmd = None
         # servo_p 开环控制记录的当前位姿
         self.left_cur_pose = None
         self.right_cur_pose = None
@@ -374,42 +396,42 @@ class NeroDualArmServer:
     def dual_robot_move_to_ee_pose(self, left_pose: list, right_pose: list, delta: bool = False):
         if self.left_robot is None or self.right_robot is None:
             return
-        self.left_robot_move_to_ee_pose(left_pose, delta=delta, wait=True)
-        self.right_robot_move_to_ee_pose(right_pose, delta=delta, wait=True)
+        self.left_robot_move_to_ee_pose(left_pose, delta=delta)
+        self.right_robot_move_to_ee_pose(right_pose, delta=delta)
 
     def left_robot_go_home(self):
         if self.left_robot is None:
             log.error("Left robot not initialized")
             return
 
-        log.info("\n--- 开始重置 ---")
-        log.info("正在清除急停锁死标志...")
-        self.left_robot.reset() 
-        time.sleep(1.0)  # 给主控足够的时间重启状态机
+        # log.info("\n--- 开始重置 ---")
+        # log.info("正在清除急停锁死标志...")
+        # self.left_robot.reset() 
+        # time.sleep(1.0)  # 给主控足够的时间重启状态机
         
-        log.info("正在切换回正常控制模式...")
-        self.left_robot.set_normal_mode()
-        time.sleep(0.5)
-        log.info("--- 状态机重置完毕 ---\n")
+        # log.info("正在切换回正常控制模式...")
+        # self.left_robot.set_normal_mode()
+        # time.sleep(0.5)
+        # log.info("--- 状态机重置完毕 ---\n")
 
-        log.info("正在使能机械臂...")
-        start_t = time.monotonic()
-        is_enabled = False
-        while time.monotonic() - start_t < 5.0:
-            if self.left_robot.enable():
-                is_enabled = True
-                break
-            time.sleep(0.5)
+        # log.info("正在使能机械臂...")
+        # start_t = time.monotonic()
+        # is_enabled = False
+        # while time.monotonic() - start_t < 5.0:
+        #     if self.left_robot.enable():
+        #         is_enabled = True
+        #         break
+        #     time.sleep(0.5)
 
-        if not is_enabled:
-            log.error("failed to enable left robot")
-            return
+        # if not is_enabled:
+        #     log.error("failed to enable left robot")
+        #     return
 
-        log.info("Left robot enabled!")
+        # log.info("Left robot enabled!")
 
         self.left_robot.set_speed_percent(30)
 
-        home = [0.0, -0.13, 0.0, 1.87, 0.0, 0.0, -0.17]
+        home = [1.22, 1.57, -1.57, 1.90, 1.57, 0.0, 0.0]
 
         log.info("[DEBUG] Moving to home: %s", home)
         self.left_robot.move_j(home)
@@ -457,34 +479,33 @@ class NeroDualArmServer:
             log.error("Right robot not initialized")
             return
 
-        log.info("\n--- 开始重置 ---")
-        log.info("正在清除急停锁死标志...")
-        self.right_robot.reset() 
-        time.sleep(1.0)  # 给主控足够的时间重启状态机
+        # log.info("\n--- 开始重置 ---")
+        # log.info("正在清除急停锁死标志...")
+        # self.right_robot.reset()
+        # time.sleep(1.0)  # 给主控足够的时间重启状态机
         
-        log.info("正在切换回正常控制模式...")
-        self.right_robot.set_normal_mode()
-        time.sleep(0.5)
-        log.info("--- 状态机重置完毕 ---\n")
+        # log.info("正在切换回正常控制模式...")
+        # self.right_robot.set_normal_mode()
+        # time.sleep(0.5)
+        # log.info("--- 状态机重置完毕 ---\n")
 
-        log.info("正在使能机械臂...")
-        start_t = time.monotonic()
-        is_enabled = False
-        while time.monotonic() - start_t < 5.0:
-            if self.right_robot.enable():
-                is_enabled = True
-                break
-            time.sleep(0.5)
+        # log.info("正在使能机械臂...")
+        # start_t = time.monotonic()
+        # is_enabled = False
+        # while time.monotonic() - start_t < 5.0:
+        #     if self.right_robot.enable():
+        #         is_enabled = True
+        #         break
+        #     time.sleep(0.5)
 
-        if not is_enabled:
-            log.info("使能失败！")
-            return
+        # if not is_enabled:
+        #     log.info("使能失败！")
+        #     return
             
-        log.info("机械臂已使能上电！")
+        # log.info("机械臂已使能上电！")
 
         self.right_robot.set_speed_percent(30)
-
-        home = [0.0, -0.13, 0.0, 1.87, 0.0, 0.0, -0.17]
+        home = [-1.22, 1.57, 1.57, 1.90, -1.57, 0.0, 0.0]
 
         log.info("[DEBUG] Moving to home: %s", home)
         self.right_robot.move_j(home)
@@ -636,13 +657,18 @@ class NeroDualArmServer:
             _interval = (_t_call_start - _last_time) * 1000
             self._last_call_time[robot_arm] = _t_call_start
             self._call_count += 1
+
+            # Short-circuit repeated IK fallback stalls for the same arm.
+            if _t_call_start < self._ik_skip_until.get(robot_arm, 0.0):
+                return False
             
             # 每50次计算实际频率
             if self._call_count % 50 == 0:
                 _elapsed = _t_call_start - self._freq_start_time
                 _actual_freq = 50 / _elapsed if _elapsed > 0 else 0
                 self._freq_start_time = _t_call_start
-                print(f"[FREQ] 实际调用频率: {_actual_freq:.1f} Hz (目标50Hz)")
+                if self.enable_servo_timing_print:
+                    print(f"[FREQ] 实际调用频率: {_actual_freq:.1f} Hz (目标50Hz)")
             
             # ========== 计时诊断 ==========
             _t_start = _time.perf_counter()
@@ -670,6 +696,7 @@ class NeroDualArmServer:
             # 2. 开环控制：仅在首次调用时读取关节角初始化 IK 状态
             # 后续调用跳过 CAN 读取，大幅减少延迟
             _t0 = _time.perf_counter()
+            q_current = None  # 初始化变量，避免 UnboundLocalError
             if ik_solver.state is None:
                 q_current = self._get_current_joints(robot, timeout=2.0)
                 if q_current is None:
@@ -677,6 +704,9 @@ class NeroDualArmServer:
                     return False
                 ik_solver.init_state(q_current)
                 log.info("[servo_p_OL] IK solver state initialized")
+            else:
+                # 已初始化时，从 IK solver 状态获取当前关节角
+                q_current = ik_solver.state.q_prev
             _timings['get_joints'] = (_time.perf_counter() - _t0) * 1000
             
             pose = np.asarray(pose, dtype=float).reshape(-1)
@@ -687,6 +717,13 @@ class NeroDualArmServer:
             _t0 = _time.perf_counter()
             if delta:
                 pose = self._limit_pose_delta(pose)
+                # Failure-aware attenuation: reduce command amplitude for recovery frames.
+                delta_scale = float(self._ik_delta_scale.get(robot_arm, 1.0))
+                if delta_scale < 0.999:
+                    pose = pose * delta_scale
+                # Temporarily freeze orientation increments after repeated IK failures.
+                if _t_call_start < self._ik_freeze_rot_until.get(robot_arm, 0.0):
+                    pose[3:] = 0.0
                 
                 # ⚠️ 关键修复：增量模式下使用 IK solver 内部状态计算当前位姿
                 # 而不是用实际关节角 q_current，保证 IK 求解的连续性
@@ -735,6 +772,20 @@ class NeroDualArmServer:
             _t0 = _time.perf_counter()
             q_cmd = ik_solver.solve(target_pose)
             _timings['ik_solve'] = (_time.perf_counter() - _t0) * 1000
+
+            # IK 超时保护：若单次解算超过阈值，则丢弃本次动作，避免控制环路滞后。
+            if _timings['ik_solve'] > self.max_ik_solve_ms:
+                log.warning(
+                    f"[servo_p_OL] Drop action for {robot_arm}: "
+                    f"IK solve {_timings['ik_solve']:.1f}ms > {self.max_ik_solve_ms:.1f}ms"
+                )
+                self._ik_delta_scale[robot_arm] = max(
+                    self.ik_delta_min_scale,
+                    self._ik_delta_scale.get(robot_arm, 1.0) * self.ik_delta_decay,
+                )
+                self._ik_freeze_rot_until[robot_arm] = _t_call_start + self.ik_orientation_freeze_s
+                self._ik_skip_until[robot_arm] = _t_call_start + self.ik_fail_cooldown_s
+                return False
             
             # 调试日志改为 debug 级别
             log.debug(f"计算出的关节角度: {q_cmd}")
@@ -744,6 +795,12 @@ class NeroDualArmServer:
                 log.error("[ERROR] IK solve failed: returned None/Empty")
                 # IK 失败时重新同步状态，避免状态不一致
                 ik_solver.init_state(q_current)
+                self._ik_delta_scale[robot_arm] = max(
+                    self.ik_delta_min_scale,
+                    self._ik_delta_scale.get(robot_arm, 1.0) * self.ik_delta_decay,
+                )
+                self._ik_freeze_rot_until[robot_arm] = _t_call_start + self.ik_orientation_freeze_s
+                self._ik_skip_until[robot_arm] = _t_call_start + self.ik_fail_cooldown_s
                 return False
 
             if isinstance(q_cmd, np.ndarray):
@@ -760,14 +817,21 @@ class NeroDualArmServer:
 
             # ========== 计时诊断（每次输出，用于调试50Hz性能） ==========
             _timings['total'] = (_time.perf_counter() - _t_start) * 1000
-            print(f"[TIMING-{robot_arm}] "
-                  f"interval={_interval:.1f}ms, "
-                  f"select={_timings['select_robot']:.1f}ms, "
-                  f"get_joints={_timings['get_joints']:.1f}ms, "
-                  f"target={_timings['target_compute']:.1f}ms, "
-                  f"ik={_timings['ik_solve']:.1f}ms, "
-                  f"send={_timings['send_command']:.1f}ms, "
-                  f"total={_timings['total']:.1f}ms")
+            if self.enable_servo_timing_print and self._call_count % self.servo_timing_print_every_n == 0:
+                print(f"[TIMING-{robot_arm}] "
+                    f"interval={_interval:.1f}ms, "
+                    f"select={_timings['select_robot']:.1f}ms, "
+                    f"get_joints={_timings['get_joints']:.1f}ms, "
+                    f"target={_timings['target_compute']:.1f}ms, "
+                    f"ik={_timings['ik_solve']:.1f}ms, "
+                    f"send={_timings['send_command']:.1f}ms, "
+                    f"total={_timings['total']:.1f}ms")
+
+            # Successful frame: gradually restore delta scale to normal.
+            self._ik_delta_scale[robot_arm] = min(
+                1.0,
+                self._ik_delta_scale.get(robot_arm, 1.0) + self.ik_delta_recover,
+            )
 
             return True
 
@@ -940,6 +1004,34 @@ class NeroDualArmServer:
                 log.info(f"[setup_gripper] Setting up gripper...")
 
                 if(gripper == self.left_gripper):
+
+                    # 检查夹爪通信状态
+                    if not self.left_gripper.is_ok():
+                        log.warning("[setup_gripper] Left gripper communication not ready, waiting...")
+                        for i in range(20):
+                            time.sleep(0.1)
+                            if self.left_gripper.is_ok():
+                                log.info(f"[setup_gripper] Left gripper communication ready after {i*0.1:.1f}s")
+                                break
+                        else:
+                            log.error("[setup_gripper] Left gripper communication timeout!")
+                            return
+                    
+                    # 等待夹爪状态反馈
+                    status = None
+                    for i in range(20):
+                        status = self.left_gripper.get_gripper_status()
+                        if status is not None:
+                            log.info(f"[setup_gripper] Left gripper status received after {i*0.1:.1f}s")
+                            break
+                        time.sleep(0.1)
+                    
+                    if status is None:
+                        log.warning("[setup_gripper] Left gripper status not available, continuing anyway...")
+                    else:
+                        log.info(f"[setup_gripper] Left gripper initial state: width={status.msg.width:.4f}m, force={status.msg.force:.2f}N, enabled={status.msg.foc_status.driver_enable_status}")
+                    
+
                     log.info(f"[setup_gripper] Setting up left gripper...")
                     self.left_gripper_goto(0.0)
                     log.info("[setup_gripper] Left gripper closed (width=0.0)")
@@ -950,6 +1042,34 @@ class NeroDualArmServer:
                     log.info("[setup_gripper] Left gripper setup completed")
                 else:
                     log.info(f"[setup_gripper] Setting up right gripper...")
+
+                    # 检查夹爪通信状态
+                    if not self.left_gripper.is_ok():
+                        log.warning("[setup_gripper] Left gripper communication not ready, waiting...")
+                        for i in range(20):
+                            time.sleep(0.1)
+                            if self.left_gripper.is_ok():
+                                log.info(f"[setup_gripper] Left gripper communication ready after {i*0.1:.1f}s")
+                                break
+                        else:
+                            log.error("[setup_gripper] Left gripper communication timeout!")
+                            return
+                    
+                    # 等待夹爪状态反馈
+                    status = None
+                    for i in range(20):
+                        status = self.left_gripper.get_gripper_status()
+                        if status is not None:
+                            log.info(f"[setup_gripper] Left gripper status received after {i*0.1:.1f}s")
+                            break
+                        time.sleep(0.1)
+                    
+                    if status is None:
+                        log.warning("[setup_gripper] Left gripper status not available, continuing anyway...")
+                    else:
+                        log.info(f"[setup_gripper] Left gripper initial state: width={status.msg.width:.4f}m, force={status.msg.force:.2f}N, enabled={status.msg.foc_status.driver_enable_status}")
+                    
+
                     self.right_gripper_goto(0.0)
                     log.info("[setup_gripper] Right gripper closed (width=0.0)")
                     time.sleep(0.5)
@@ -974,12 +1094,16 @@ class NeroDualArmServer:
             return False
 
         width = float(max(0.0, min(width, 0.1)))
+        cmd = (round(width, 4), round(float(force), 3))
+        if self._last_left_gripper_cmd == cmd:
+            return True
 
         try:
             _t0 = _time.perf_counter()
             self.left_gripper.move_gripper(width=width, force=force)
             _t_move = (_time.perf_counter() - _t0) * 1000
             _t_total = (_time.perf_counter() - _t_start) * 1000
+            self._last_left_gripper_cmd = cmd
             print(f"[GRIPPER-L] move={_t_move:.1f}ms, total={_t_total:.1f}ms, width={width:.3f}")
             return True
         except Exception as e:
@@ -1052,12 +1176,16 @@ class NeroDualArmServer:
             return False
 
         width = float(max(0.0, min(width, 0.1)))
+        cmd = (round(width, 4), round(float(force), 3))
+        if self._last_right_gripper_cmd == cmd:
+            return True
 
         try:
             _t0 = _time.perf_counter()
             self.right_gripper.move_gripper(width=width, force=force)
             _t_move = (_time.perf_counter() - _t0) * 1000
             _t_total = (_time.perf_counter() - _t_start) * 1000
+            self._last_right_gripper_cmd = cmd
             print(f"[GRIPPER-R] move={_t_move:.1f}ms, total={_t_total:.1f}ms, width={width:.3f}")
             return True
         except Exception as e:
