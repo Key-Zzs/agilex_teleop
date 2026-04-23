@@ -398,7 +398,8 @@ class NeroDualArmServer:
 
         self.left_robot.set_speed_percent(30)
 
-        home = [1.22, 1.57, -1.57, 1.90, 1.57, 0.0, 0.0]
+        home = [0.0, -0.13, 0.0, 1.87, 0.0, 0.0, 1.1]
+        # home = [1.22, 1.57, -1.57, 1.90, 1.57, 0.0, 0.0]
 
         log.info("[DEBUG] Moving to home: %s", home)
         self.left_robot.move_j(home)
@@ -449,7 +450,8 @@ class NeroDualArmServer:
 
         self.right_robot.set_speed_percent(30)
         
-        home = [-1.22, 1.57, 1.57, 1.90, -1.57, 0.0, 0.0]
+        home = [0.0, -0.13, 0.0, 1.87, 0.0, 0.0, 1.1]
+        # home = [-1.22, 1.57, 1.57, 1.90, -1.57, 0.0, 0.0]
 
         log.info("[DEBUG] Moving to home: %s", home)
         self.right_robot.move_j(home)
