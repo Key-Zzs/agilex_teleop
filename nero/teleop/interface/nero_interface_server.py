@@ -1308,5 +1308,5 @@ if __name__ == '__main__':
     parser.add_argument('--port', type=int, default=4242)
     parser.add_argument('--no-gripper', action='store_true')
     args = parser.parse_args()
-    logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(message)s')
+    logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(message)s', force=True)
     start_server(ip=args.ip, port=args.port, gripper_enabled=not args.no_gripper)
