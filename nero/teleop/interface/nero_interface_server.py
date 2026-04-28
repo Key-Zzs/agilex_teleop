@@ -398,8 +398,9 @@ class NeroDualArmServer:
 
         self.left_robot.set_speed_percent(30)
 
-        home = [0.0, -0.2, 0.0, 1.87, 0.7, 0.0, 1.1]
-        # home = [1.22, 1.57, -1.57, 1.90, 1.57, 0.0, 0.0]
+        # home = [0.0, -0.2, 0.0, 1.87, -0.7, 0.0, 1.1]
+        home = [0.0, -0.2, 0.0, 1.87, 0.0, 0.0, 1.1]
+        # home = [1.22, 1.57, -1.57, 1.90, -1.57, 0.0, 0.0]
 
         log.info("[DEBUG] Moving to home: %s", home)
         self.left_robot.move_j(home)
@@ -450,8 +451,9 @@ class NeroDualArmServer:
 
         self.right_robot.set_speed_percent(30)
         
-        home = [0.0, -0.2, 0.0, 1.87, -0.7, 0.0, 1.1]
-        # home = [-1.22, 1.57, 1.57, 1.90, -1.57, 0.0, 0.0]
+        # home = [0.0, -0.2, 0.0, 1.87, 0.7, 0.0, 1.1]
+        home = [0.0, -0.2, 0.0, 1.87, 0.0, 0.0, 1.1]
+        # home = [-1.22, 1.57, 1.57, 1.90, 1.57, 0.0, 0.0]
 
         log.info("[DEBUG] Moving to home: %s", home)
         self.right_robot.move_j(home)
@@ -1308,5 +1310,5 @@ if __name__ == '__main__':
     parser.add_argument('--port', type=int, default=4242)
     parser.add_argument('--no-gripper', action='store_true')
     args = parser.parse_args()
-    logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(message)s')
+    logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(message)s', force=True)
     start_server(ip=args.ip, port=args.port, gripper_enabled=not args.no_gripper)
