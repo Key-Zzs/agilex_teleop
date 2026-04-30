@@ -150,9 +150,12 @@ class NeroDualArmServer:
         self.ik_orientation_freeze_s = 0.20
         self._ik_delta_scale = {"left_robot": 1.0, "right_robot": 1.0}
         self._ik_freeze_rot_until = {"left_robot": 0.0, "right_robot": 0.0}
+
         # High-frequency stdout printing can introduce control-loop jitter.
         self.enable_servo_timing_print = False
         self.servo_timing_print_every_n = 50
+        self.gripper_print = False
+
         # servo_p 开环控制记录的当前位姿
         self.left_cur_pose = None
         self.right_cur_pose = None
@@ -398,8 +401,8 @@ class NeroDualArmServer:
 
         self.left_robot.set_speed_percent(30)
 
-        # home = [0.0, -0.2, 0.0, 1.87, -0.7, 0.0, 1.1]
-        home = [0.0, -0.2, 0.0, 1.87, 0.0, 0.0, 1.1]
+        home = [0.0, -0.2, 0.0, 1.87, -0.7, 0.0, 1.1]
+        # home = [0.0, -0.2, 0.0, 1.87, 0.0, 0.0, 1.1]
         # home = [1.22, 1.57, -1.57, 1.90, -1.57, 0.0, 0.0]
 
         log.info("[DEBUG] Moving to home: %s", home)
@@ -451,8 +454,8 @@ class NeroDualArmServer:
 
         self.right_robot.set_speed_percent(30)
         
-        # home = [0.0, -0.2, 0.0, 1.87, 0.7, 0.0, 1.1]
-        home = [0.0, -0.2, 0.0, 1.87, 0.0, 0.0, 1.1]
+        home = [0.0, -0.2, 0.0, 1.87, 0.7, 0.0, 1.1]
+        # home = [0.0, -0.2, 0.0, 1.87, 0.0, 0.0, 1.1]
         # home = [-1.22, 1.57, 1.57, 1.90, 1.57, 0.0, 0.0]
 
         log.info("[DEBUG] Moving to home: %s", home)
@@ -1086,7 +1089,8 @@ class NeroDualArmServer:
             _t_move = (_time.perf_counter() - _t0) * 1000
             _t_total = (_time.perf_counter() - _t_start) * 1000
             self._last_left_gripper_cmd = cmd
-            print(f"[GRIPPER-L] move={_t_move:.1f}ms, total={_t_total:.1f}ms, width={width:.3f}")
+            if self.gripper_print:
+                print(f"[GRIPPER-L] move={_t_move:.1f}ms, total={_t_total:.1f}ms, width={width:.3f}")
             return True
         except Exception as e:
             log.error(f"[SERVER] Left gripper goto failed: {e}")
@@ -1168,7 +1172,8 @@ class NeroDualArmServer:
             _t_move = (_time.perf_counter() - _t0) * 1000
             _t_total = (_time.perf_counter() - _t_start) * 1000
             self._last_right_gripper_cmd = cmd
-            print(f"[GRIPPER-R] move={_t_move:.1f}ms, total={_t_total:.1f}ms, width={width:.3f}")
+            if self.gripper_print:
+                print(f"[GRIPPER-R] move={_t_move:.1f}ms, total={_t_total:.1f}ms, width={width:.3f}")
             return True
         except Exception as e:
             log.error(f"[SERVER] Right gripper goto failed: {e}")
