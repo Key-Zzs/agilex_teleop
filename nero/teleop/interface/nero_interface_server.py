@@ -130,7 +130,8 @@ class NeroDualArmServer:
             log.info("Nero Dual-Gripper Server Ready")
             log.info("=" * 50)
 
-        self.tcp_offset = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+        self.tcp_offset = [0.19, 0.0, 0.0, 0.0, 0.0, 0.0]
+        self.limit_tcp_z = 0.07
         # Initialize IK solver
         # Keep server-side IK timestep aligned with teleop action send rate.
         self.track_freq = 50.0
@@ -601,8 +602,6 @@ class NeroDualArmServer:
         try:
             import time as _time
             from pyAgxArm.utiles.tf import rot_to_rpy, euler_convert_quat, quat_convert_euler
-            
-            limit_z = 0.25
 
             # ========== 调用间隔追踪 ==========
             _t_call_start = _time.perf_counter()
@@ -726,10 +725,10 @@ class NeroDualArmServer:
                 target_pose = pose
                 target_xyz = np.asarray(target_pose[:3], dtype=float)
 
-            if target_xyz[2] < limit_z:
+            if target_xyz[2] < self.limit_tcp_z:
                 log.warning(
                     f"[servo_p_OL] Skip command for {robot_arm}: "
-                    f"target z={target_xyz[2]:.4f}m < limit_z={limit_z:.4f}m"
+                    f"target z={target_xyz[2]:.4f}m < limit_z={self.limit_tcp_z:.4f}m"
                 )
                 return False
             _timings['target_compute'] = (_time.perf_counter() - _t0) * 1000
