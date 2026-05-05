@@ -101,7 +101,7 @@ pip install -e .
 
       # Include dynamics features
       pip install -e ".[dynamics]"
-   ```
+      ```
 
    - Install Pinocchio (optional)
 
@@ -192,6 +192,7 @@ First, insert the two official CAN modules into the Server PC. It is recommended
    ```bash
    bash pyAgxArm/scripts/ubuntu/find_all_can_port.sh
    ```
+
    Check if `can_left` and `can_right` appear.
 
 
@@ -200,8 +201,7 @@ For CAN module user manual, see official documentation: [docs/can_user.md](./doc
 #### 1.1.2 Run nero Test Scripts (recommended to run, otherwise the robotic arm may remain in a disabled state)
 
 **Note**:
-1. [reset.py](./nero/tests/reset.py) and [test_pos_flw_ik.py](./nero/tests/test_pos_flw_ik.py) are single-arm test scripts. After running one arm, modify the CAN device name in the file (e.g., `can_left` or `can_right`), then run the other.
-2. After running [reset.py](./nero/tests/reset.py), the robotic arm will instantly lose torque, **be sure to hold it steady!!!!!!**
+[reset.py](./nero/tests/reset.py) and [test_pos_flw_ik.py](./nero/tests/test_pos_flw_ik.py) are single-arm test scripts. After running one arm, modify the CAN device name in the file (e.g., `can_left` or `can_right`), then run the other.
 
 ```bash
 # nero joint reset script
@@ -263,7 +263,7 @@ python nero/tests/test_pos_flw_ik.py
    2. Put on the headset and allow USB debugging when prompted
    3. Check "Always allow from this computer"
    4. Verify connection:
-   
+
       ```bash
       adb devices
       # Expected output:
@@ -278,7 +278,7 @@ python nero/tests/test_pos_flw_ik.py
    1. First connect Oculus Quest to computer via USB cable to execute Method 1
    2. Ensure Oculus Quest and computer are on the same network
    3. Verify connection:
-   
+
       ```bash
       adb connect <obtained_IP_address>:5555
       adb shell ip route
@@ -286,7 +286,7 @@ python nero/tests/test_pos_flw_ik.py
       ```
 
    4. Configure IP in `record_cfg.yaml`:
-   
+
       ```yaml
       teleop:
          oculus_config:
@@ -298,12 +298,12 @@ python nero/tests/test_pos_flw_ik.py
 ## 2 Start Teleoperation Server Service
 
 **Note**:
-1. Please ensure `bash pyAgxArm/scripts/ubuntu/find_all_can_port.sh` outputs `can_left` and `can_right` two CAN devices!!
-2. **When starting the Server service** [nero_interface_server.py](./nero/teleop/interface/nero_interface_server.py) **be sure to hold the robotic arm steady, the program is not optimized yet, there is a risk of falling!!!!!!**
+Please ensure `bash pyAgxArm/scripts/ubuntu/find_all_can_port.sh` outputs `can_left` and `can_right` two CAN devices!!
 
 ```bash
 # Start Server service
-python nero/teleop/interface/nero_interface_server.py --ip 0.0.0.0 --port 4242
+python nero/teleop/interface/nero_interface_server.py \
+--ip 0.0.0.0 --port 4242 --gripper-enabled True --tcp-offset-enabled False --limit-tcp-z 0.07
 
 # Open port 4242 (if Server PC has ports open by default, skip this step)
 sudo iptables -I INPUT -p tcp --dport 4242 -j ACCEPT # iptables method
@@ -314,6 +314,7 @@ sudo iptables -I INPUT -p tcp --dport 4242 -j ACCEPT # iptables method
 ## 3 Start Teleoperation Client Service
 
 **Note**:
+
 1. Before starting, please check if Oculus Quest is connected successfully with `adb devices`
 2. After modifying any Python file in the project, run `pip install -e .` in the project root directory `agilex_ws/dual_arm_teleop` to update dependencies
 

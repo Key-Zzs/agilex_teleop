@@ -7,6 +7,7 @@
 AgileX nero 机械臂双臂遥操作系统，基于 AgileX 机械臂 SDK 开发。
 
 本项目所需设备为：
+
 - **AgileX nero 机械臂** x 2
 - **AgileX gripper（集成 Inter RealSense D405 相机传感器）** x 2
 - **Inter RealSense D435i 相机传感器** x 1
@@ -42,6 +43,7 @@ conda activate agilex_teleop
 ```
 
 ### 0.2 克隆 lerobot 项目并安装 lerobot 框架
+
 ```bash
 # 安装指定版本 0.3.4
 # git checkout da5d2f3e9187fa4690e6667fe8b294cae49016d6
@@ -192,6 +194,7 @@ pip install -e .
    ```bash
    bash pyAgxArm/scripts/ubuntu/find_all_can_port.sh
    ```
+
    查看是否有 `can_left` 和 `can_right`。
 
 
@@ -261,7 +264,7 @@ python nero/tests/test_pos_flw_ik.py
    2. 佩戴头显并在提示时允许 USB 调试
    3. 勾选 `始终允许来自此计算机`
    4. 验证连接：
-   
+
       ```bash
       adb devices
       # 预期输出：
@@ -276,7 +279,7 @@ python nero/tests/test_pos_flw_ik.py
    1. 首先通过 USB 线缆连接 Oculus Quest 到计算机执行方案 1
    2. 确保 Oculus Quest 和计算机连接到同一网络
    3. 验证连接：
-   
+
       ```bash
       adb connect <获取到的IP地址>:5555
       adb shell ip route
@@ -284,7 +287,7 @@ python nero/tests/test_pos_flw_ik.py
       ```
 
    4. 在 `record_cfg.yaml` 中配置 IP：
-   
+
       ```yaml
       teleop:
          oculus_config:
@@ -300,7 +303,8 @@ python nero/tests/test_pos_flw_ik.py
 
 ```bash
 # 启动 Server 服务
-python nero/teleop/interface/nero_interface_server.py --ip 0.0.0.0 --port 4242
+python nero/teleop/interface/nero_interface_server.py \
+--ip 0.0.0.0 --port 4242 --gripper-enabled True --tcp-offset-enabled False --limit-tcp-z 0.07
 
 # 开放端口 4242（若 Server 端 PC 默认开放端口，无需此步）
 udo iptables -I INPUT -p tcp --dport 4242 -j ACCEPT # iptables 方式
@@ -311,6 +315,7 @@ udo iptables -I INPUT -p tcp --dport 4242 -j ACCEPT # iptables 方式
 ## 3 启动遥操作 Client 端服务
 
 **注意**：
+
 1. 启动前请 `adb devices` 检查 Oculus Quest 是否连接成功
 2. 每次修改项目中的 python 文件后，需在项目根目录 `agilex_ws/dual_arm_teleop`  下执行 `pip install -e .` 更新依赖
 
@@ -363,7 +368,6 @@ AgxArm_teleop/
 | Nero 首次使用 CAN 指南 | [docs/nero/first_time_user_guide_can.md](./docs/nero/first_time_user_guide_can.md#nero-首次使用指南can) |
 | Nero API | [docs/nero/nero_api.md](./docs/nero/nero_api.md#nero-机械臂-api-使用文档) |
 | AgxGripper API | [docs/effector/agx_gripper/agx_gripper_api.md](./docs/effector/agx_gripper/agx_gripper_api.md#agxgripper-夹爪-api-使用文档) |
-
 
 ---
 

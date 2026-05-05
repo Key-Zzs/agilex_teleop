@@ -31,7 +31,7 @@ def quat_multiply(q1, q2):
 class NeroDualArmServer:
     """Dual-arm Nero server interface."""
     
-    def __init__(self, gripper_enabled: bool = True):
+    def __init__(self, gripper_enabled: bool = True, tcp_offset_enabled: bool = False, limit_tcp_z: float = 0.07):
         self.gripper_enabled = gripper_enabled
         # Initialize IK handles early: go_home may run before IK setup completes.
         self.left_ik_solver = None
@@ -39,6 +39,15 @@ class NeroDualArmServer:
         # Must exist before _setup_gripper triggers *_gripper_goto calls.
         self._last_left_gripper_cmd = None
         self._last_right_gripper_cmd = None
+        # Mode selector
+        tcp_offset = [0.19, 0.0, 0.0, 0.0, 0.0, 0.0]
+        # self.limit_tcp_z = 0.07
+        if not tcp_offset_enabled:
+            self.tcp_offset = [0.0]*6
+            self.limit_z = limit_tcp_z + tcp_offset[0] # axis z_limit(m) in flange pose
+        else:
+            self.tcp_offset = tcp_offset
+            self.limit_z = limit_tcp_z # axis z_limit(m) in tcp pose
 
         # Initialize left arm
         self.left_robot = None
@@ -130,8 +139,6 @@ class NeroDualArmServer:
             log.info("Nero Dual-Gripper Server Ready")
             log.info("=" * 50)
 
-        self.tcp_offset = [0.19, 0.0, 0.0, 0.0, 0.0, 0.0]
-        self.limit_tcp_z = 0.07
         # Initialize IK solver
         # Keep server-side IK timestep aligned with teleop action send rate.
         self.track_freq = 50.0
@@ -725,10 +732,10 @@ class NeroDualArmServer:
                 target_pose = pose
                 target_xyz = np.asarray(target_pose[:3], dtype=float)
 
-            if target_xyz[2] < self.limit_tcp_z:
+            if target_xyz[2] < self.limit_z:
                 log.warning(
                     f"[servo_p_OL] Skip command for {robot_arm}: "
-                    f"target z={target_xyz[2]:.4f}m < limit_z={self.limit_tcp_z:.4f}m"
+                    f"target z={target_xyz[2]:.4f}m < limit_z={self.limit_z:.4f}m"
                 )
                 return False
             _timings['target_compute'] = (_time.perf_counter() - _t0) * 1000
@@ -1318,8 +1325,8 @@ class NeroDualArmServer:
             log.error(f"[SERVER] Robot stop failed: {e}")
             return False
 
-def start_server(ip: str, port: int = 4242, gripper_enabled: bool = True):
-    server = zerorpc.Server(NeroDualArmServer(gripper_enabled))
+def start_server(ip: str, port: int = 4242, gripper_enabled: bool = True, tcp_offset_enabled: bool = False, limit_tcp_z: float = 0.07):
+    server = zerorpc.Server(NeroDualArmServer(gripper_enabled, tcp_offset_enabled, limit_tcp_z))
     server.bind(f"tcp://{ip}:{port}")
     log.info(f"[SERVER] Listening on tcp://{ip}:{port}")
     server.run()
@@ -1331,7 +1338,10 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--ip', type=str, default='0.0.0.0')
     parser.add_argument('--port', type=int, default=4242)
-    parser.add_argument('--no-gripper', action='store_true')
+    parser.add_argument('--gripper-enabled', action='store_true')
+    parser.add_argument('--tcp-offset-enabled', action='store_false')
+    parser.add_argument('--limit-tcp-z', type=float, default=0.07) # axis z_limit(m) in tcp pose
     args = parser.parse_args()
     logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(message)s', force=True)
-    start_server(ip=args.ip, port=args.port, gripper_enabled=not args.no_gripper)
+
+    start_server(ip=args.ip, port=args.port, gripper_enabled=args.gripper_enabled, tcp_offset_enabled=args.tcp_offset_enabled, limit_tcp_z=args.limit_tcp_z)
