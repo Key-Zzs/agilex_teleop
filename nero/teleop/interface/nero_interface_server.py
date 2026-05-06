@@ -31,7 +31,7 @@ def quat_multiply(q1, q2):
 class NeroDualArmServer:
     """Dual-arm Nero server interface."""
     
-    def __init__(self, gripper_enabled: bool = True, tcp_offset_enabled: bool = False, limit_tcp_z: float = 0.07):
+    def __init__(self, gripper_enabled: bool = True, tcp_offset_enabled: bool = False, limit_z: float = 0.07):
         self.gripper_enabled = gripper_enabled
         # Initialize IK handles early: go_home may run before IK setup completes.
         self.left_ik_solver = None
@@ -44,10 +44,14 @@ class NeroDualArmServer:
         # self.limit_tcp_z = 0.07
         if not tcp_offset_enabled:
             self.tcp_offset = [0.0]*6
-            self.limit_z = limit_tcp_z + tcp_offset[0] # axis z_limit(m) in flange pose
+            self.limit_z = limit_z # axis z_limit(m) in flange pose
         else:
             self.tcp_offset = tcp_offset
-            self.limit_z = limit_tcp_z # axis z_limit(m) in tcp pose
+            self.limit_z = limit_z # axis z_limit(m) in tcp pose
+
+        log.info("="*50)
+        log.info(f"tcp_offset = {self.tcp_offset}, limit_z = {self.limit_z}")
+        log.info("="*50)
 
         # Initialize left arm
         self.left_robot = None
@@ -1092,9 +1096,6 @@ class NeroDualArmServer:
         
         log.info("[setup_gripper] Gripper setup completed for both arms")
 
-    # TODO: 重构为非阻塞控制
-    ## def task():
-    ## threading.Thread(target=task, daemon=True).start()
     def left_gripper_goto(self, width: float, force: float = 1.0):
         import time as _time
         _t_start = _time.perf_counter()
@@ -1292,7 +1293,6 @@ class NeroDualArmServer:
 
     # ==================== Utility ====================
     
-    # TODO: wait for testing
     def robot_stop(self, robot_arm: str):
         """
         Stops the specified robot arm by triggering an emergency stop.
@@ -1331,17 +1331,17 @@ def start_server(ip: str, port: int = 4242, gripper_enabled: bool = True, tcp_of
     log.info(f"[SERVER] Listening on tcp://{ip}:{port}")
     server.run()
 
-# python nero_interface/nero_interface_server.py --ip 0.0.0.0 --port 4242
+# python nero_interface/nero_interface_server.py --ip 0.0.0.0 --port 4242 --limit-z 0.07
 # sudo iptables -I INPUT -p tcp --dport 4242 -j ACCEPT
 if __name__ == '__main__':
     import argparse
     parser = argparse.ArgumentParser()
     parser.add_argument('--ip', type=str, default='0.0.0.0')
     parser.add_argument('--port', type=int, default=4242)
-    parser.add_argument('--gripper-enabled', action='store_true')
-    parser.add_argument('--tcp-offset-enabled', action='store_false')
-    parser.add_argument('--limit-tcp-z', type=float, default=0.07) # axis z_limit(m) in tcp pose
+    parser.add_argument('--no-gripper', action='store_false')
+    parser.add_argument('--tcp-offset-enabled', action='store_true')
+    parser.add_argument('--limit-z', type=float, default=0.07) # axis z_limit(m) in tcp pose
     args = parser.parse_args()
     logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(message)s', force=True)
 
-    start_server(ip=args.ip, port=args.port, gripper_enabled=args.gripper_enabled, tcp_offset_enabled=args.tcp_offset_enabled, limit_tcp_z=args.limit_tcp_z)
+    start_server(ip=args.ip, port=args.port, gripper_enabled=args.no_gripper, tcp_offset_enabled=args.tcp_offset_enabled, limit_z=args.limit_z)
