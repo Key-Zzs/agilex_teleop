@@ -1325,13 +1325,15 @@ class NeroDualArmServer:
             log.error(f"[SERVER] Robot stop failed: {e}")
             return False
 
-def start_server(ip: str, port: int = 4242, gripper_enabled: bool = True, tcp_offset_enabled: bool = False, limit_tcp_z: float = 0.07):
-    server = zerorpc.Server(NeroDualArmServer(gripper_enabled, tcp_offset_enabled, limit_tcp_z))
+def start_server(ip: str, port: int = 4242, gripper_enabled: bool = True, tcp_offset_enabled: bool = False, limit_z: float = 0.07):
+    server = zerorpc.Server(NeroDualArmServer(gripper_enabled, tcp_offset_enabled, limit_z))
     server.bind(f"tcp://{ip}:{port}")
     log.info(f"[SERVER] Listening on tcp://{ip}:{port}")
     server.run()
 
-# python nero_interface/nero_interface_server.py --ip 0.0.0.0 --port 4242 --limit-z 0.07
+# python nero_interface/nero_interface_server.py --ip 0.0.0.0 --port 4242 --limit-z 0.26
+# python nero_interface/nero_interface_server.py --ip 0.0.0.0 --port 4242 --limit-z 0.0
+# python nero_interface/nero_interface_server.py --ip 0.0.0.0 --port 4242 --tcp-offset-enabled --limit-z 0.0
 # sudo iptables -I INPUT -p tcp --dport 4242 -j ACCEPT
 if __name__ == '__main__':
     import argparse
@@ -1340,7 +1342,7 @@ if __name__ == '__main__':
     parser.add_argument('--port', type=int, default=4242)
     parser.add_argument('--no-gripper', action='store_false')
     parser.add_argument('--tcp-offset-enabled', action='store_true')
-    parser.add_argument('--limit-z', type=float, default=0.07) # axis z_limit(m) in tcp pose
+    parser.add_argument('--limit-z', type=float, default=0.26) # axis z_limit(m) in tcp pose
     args = parser.parse_args()
     logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(message)s', force=True)
 

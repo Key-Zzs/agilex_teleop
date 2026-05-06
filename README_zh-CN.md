@@ -303,8 +303,12 @@ python nero/tests/test_pos_flw_ik.py
 
 ```bash
 # 启动 Server 服务
-python nero/teleop/interface/nero_interface_server.py \
---ip 0.0.0.0 --port 4242 --gripper-enabled True --tcp-offset-enabled False --limit-tcp-z 0.07
+# Task 1
+python nero_interface/nero_interface_server.py --ip 0.0.0.0 --port 4242 --limit-z 0.26
+# Task 2
+python nero_interface/nero_interface_server.py --ip 0.0.0.0 --port 4242 --limit-z 0.0
+# Task 3
+python nero_interface/nero_interface_server.py --ip 0.0.0.0 --port 4242 --tcp-offset-enabled --limit-z 0.0
 
 # 开放端口 4242（若 Server 端 PC 默认开放端口，无需此步）
 udo iptables -I INPUT -p tcp --dport 4242 -j ACCEPT # iptables 方式

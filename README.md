@@ -302,8 +302,12 @@ Please ensure `bash pyAgxArm/scripts/ubuntu/find_all_can_port.sh` outputs `can_l
 
 ```bash
 # Start Server service
-python nero/teleop/interface/nero_interface_server.py \
---ip 0.0.0.0 --port 4242 --gripper-enabled True --tcp-offset-enabled False --limit-tcp-z 0.07
+# Task 1
+python nero_interface/nero_interface_server.py --ip 0.0.0.0 --port 4242 --limit-z 0.26
+# Task 2
+python nero_interface/nero_interface_server.py --ip 0.0.0.0 --port 4242 --limit-z 0.0
+# Task 3
+python nero_interface/nero_interface_server.py --ip 0.0.0.0 --port 4242 --tcp-offset-enabled --limit-z 0.0
 
 # Open port 4242 (if Server PC has ports open by default, skip this step)
 sudo iptables -I INPUT -p tcp --dport 4242 -j ACCEPT # iptables method
