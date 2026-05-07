@@ -173,6 +173,7 @@ class NeroDualArmServer:
         # tests can inspect the exact current joints, solved joints, joint delta and ee pose without parsing
         # log text.
         self.last_servo_p_ol_debug = {"left_robot": None, "right_robot": None}
+        self._chunkwise_align_debug_call_count = {"left_robot": 0, "right_robot": 0}
 
         # servo_p 开环控制记录的当前位姿
         self.left_cur_pose = None
@@ -200,6 +201,79 @@ class NeroDualArmServer:
                 return None
             time.sleep(0.005)
         return current_joints
+
+    @staticmethod
+    def _env_flag(name: str, default: bool = False) -> bool:
+        value = os.getenv(name)
+        if value is None:
+            return default
+        return value.strip().lower() in {"1", "true", "yes", "on"}
+
+    @staticmethod
+    def _env_int(name: str, default: int) -> int:
+        value = os.getenv(name)
+        if value is None:
+            return default
+        try:
+            return int(value)
+        except ValueError:
+            log.warning("[SERVER DEBUG] Ignoring invalid integer env %s=%r", name, value)
+            return default
+
+    @staticmethod
+    def _env_float(name: str, default: float) -> float:
+        value = os.getenv(name)
+        if value is None:
+            return default
+        try:
+            return float(value)
+        except ValueError:
+            log.warning("[SERVER DEBUG] Ignoring invalid float env %s=%r", name, value)
+            return default
+
+    def _chunkwise_align_debug_enabled(self) -> bool:
+        return self._env_flag("NERO_CHUNKWISE_DEBUG", False)
+
+    def _chunkwise_align_debug_every_n(self) -> int:
+        return max(1, self._env_int("NERO_CHUNKWISE_DEBUG_EVERY_N", 1))
+
+    def _select_robot_and_ik_solver(self, robot_arm: str):
+        if robot_arm == "left_robot":
+            return self.left_robot, self.left_ik_solver
+        if robot_arm == "right_robot":
+            return self.right_robot, self.right_ik_solver
+        raise ValueError(f"invalid robot_arm: {robot_arm}")
+
+    def get_servo_p_ol_reference_pose(self, robot_arm: str) -> list:
+        """Return the exact pose source servo_p_OL(delta=True) uses before applying a delta command.
+
+        This method exists to diagnose/fix chunk-wise absolute->delta execution. The client must invert an
+        absolute target against the same reference pose that the server will use for:
+            target_xyz = cur_xyz + incoming_delta_xyz
+            target_quat = delta_quat * current_quat
+
+        The reference is the IK solver's open-loop state q_prev FK. If the solver has not been initialized yet,
+        we initialize it in the same way `servo_p_OL` would on its first call.
+        """
+        try:
+            robot, ik_solver = self._select_robot_and_ik_solver(robot_arm)
+            if robot is None or ik_solver is None:
+                raise RuntimeError("robot or IK solver not ready")
+
+            if ik_solver.state is None:
+                q_current = self._get_current_joints(robot, timeout=2.0)
+                if q_current is None:
+                    raise RuntimeError("get_joint_angles timeout")
+                ik_solver.init_state(q_current)
+                log.info("[servo_p_OL reference] IK solver state initialized for %s", robot_arm)
+
+            reference_pose = np.asarray(ik_solver.fk_pose(ik_solver.state.q_prev), dtype=float).reshape(-1)
+            if reference_pose.size != 6 or not np.isfinite(reference_pose).all():
+                raise RuntimeError(f"invalid reference pose: {reference_pose.tolist()}")
+            return reference_pose.tolist()
+        except Exception as e:
+            log.error("[ERROR] get_servo_p_ol_reference_pose failed for %s: %s", robot_arm, e)
+            raise
 
     def _limit_pose_delta(self, pose_delta: np.ndarray) -> np.ndarray:
         """Clamp per-cycle Cartesian and angular increments for stable servo."""
@@ -269,6 +343,12 @@ class NeroDualArmServer:
         q_cmd: np.ndarray | None,
         ee_pose: np.ndarray | None,
         target_pose: np.ndarray,
+        incoming_delta_pose: np.ndarray | None = None,
+        applied_delta_pose: np.ndarray | None = None,
+        debug_target_abs_pose: np.ndarray | None = None,
+        pose_reconstruction_error: np.ndarray | None = None,
+        debug_step_idx=None,
+        debug_queue_idx=None,
     ) -> None:
         q_current_np = np.asarray(q_current, dtype=float).reshape(-1)
         q_cmd_np = None if q_cmd is None else np.asarray(q_cmd, dtype=float).reshape(-1)
@@ -281,8 +361,93 @@ class NeroDualArmServer:
             else (q_cmd_np - q_current_np).tolist(),
             "ee_pose": None if ee_pose is None else np.asarray(ee_pose, dtype=float).reshape(-1).tolist(),
             "target_pose": np.asarray(target_pose, dtype=float).reshape(-1).tolist(),
+            "incoming_delta_pose": None
+            if incoming_delta_pose is None
+            else np.asarray(incoming_delta_pose, dtype=float).reshape(-1).tolist(),
+            "applied_delta_pose": None
+            if applied_delta_pose is None
+            else np.asarray(applied_delta_pose, dtype=float).reshape(-1).tolist(),
+            "debug_target_abs_pose": None
+            if debug_target_abs_pose is None
+            else np.asarray(debug_target_abs_pose, dtype=float).reshape(-1).tolist(),
+            "pose_reconstruction_error": None
+            if pose_reconstruction_error is None
+            else np.asarray(pose_reconstruction_error, dtype=float).reshape(-1).tolist(),
+            "debug_step_idx": debug_step_idx,
+            "debug_queue_idx": debug_queue_idx,
         }
         self.last_servo_p_ol_debug[robot_arm] = debug_payload
+
+    @staticmethod
+    def _format_pose_values(values: np.ndarray | None) -> list[float] | None:
+        if values is None:
+            return None
+        return [round(float(value), 5) for value in np.asarray(values, dtype=float).reshape(-1).tolist()]
+
+    @staticmethod
+    def _wrap_angle_delta(angle_delta: np.ndarray) -> np.ndarray:
+        return (np.asarray(angle_delta, dtype=float) + np.pi) % (2.0 * np.pi) - np.pi
+
+    def _log_chunkwise_alignment_debug(
+        self,
+        *,
+        robot_arm: str,
+        incoming_delta_pose: np.ndarray,
+        applied_delta_pose: np.ndarray,
+        cur_pose_server_before_apply: np.ndarray,
+        target_pose_server_reconstructed: np.ndarray,
+        debug_target_abs_pose: np.ndarray | None,
+        pose_reconstruction_error: np.ndarray | None,
+        debug_step_idx,
+        debug_queue_idx,
+    ) -> None:
+        if not self._chunkwise_align_debug_enabled():
+            return
+
+        self._chunkwise_align_debug_call_count[robot_arm] += 1
+        call_idx = self._chunkwise_align_debug_call_count[robot_arm]
+        if self._chunkwise_align_debug_enabled() and call_idx % self._chunkwise_align_debug_every_n() != 0:
+            return
+
+        xyz_err_norm = None
+        rpy_err_norm = None
+        if pose_reconstruction_error is not None:
+            xyz_err_norm = float(np.linalg.norm(pose_reconstruction_error[:3]))
+            rpy_err_norm = float(np.linalg.norm(pose_reconstruction_error[3:]))
+
+        log.info(
+            "[CW_ALIGN_SERVER step=%s queue=%s arm=%s] incoming_delta_pose=%s | applied_delta_pose=%s | "
+            "cur_pose_server_before_apply=%s | target_pose_server_reconstructed=%s | target_abs_pose=%s | "
+            "pose_reconstruction_error=%s | err_xyz_norm=%s | err_rpy_norm=%s",
+            debug_step_idx,
+            debug_queue_idx,
+            robot_arm,
+            self._format_pose_values(incoming_delta_pose),
+            self._format_pose_values(applied_delta_pose),
+            self._format_pose_values(cur_pose_server_before_apply),
+            self._format_pose_values(target_pose_server_reconstructed),
+            self._format_pose_values(debug_target_abs_pose),
+            self._format_pose_values(pose_reconstruction_error),
+            None if xyz_err_norm is None else f"{xyz_err_norm:.6f}",
+            None if rpy_err_norm is None else f"{rpy_err_norm:.6f}",
+        )
+
+        xyz_warn = self._env_float("NERO_CHUNKWISE_RECON_ERROR_XYZ_WARN_M", 0.005)
+        rpy_warn = self._env_float("NERO_CHUNKWISE_RECON_ERROR_RPY_WARN_RAD", 0.05)
+        if pose_reconstruction_error is not None and (
+            xyz_err_norm is not None
+            and rpy_err_norm is not None
+            and (xyz_err_norm > xyz_warn or rpy_err_norm > rpy_warn)
+        ):
+            log.warning(
+                "[CW_ALIGN_SERVER_WARN step=%s queue=%s arm=%s] !!! server reconstructed target differs from "
+                "execution target_abs | err_xyz_norm=%.6f m | err_rpy_norm=%.6f rad",
+                debug_step_idx,
+                debug_queue_idx,
+                robot_arm,
+                xyz_err_norm,
+                rpy_err_norm,
+            )
 
     # ==================== Left Arm State Query ====================
 
@@ -663,13 +828,25 @@ class NeroDualArmServer:
     
     # ==================== ServoP Control (Pose Servo) ====================
 
-    def servo_p_OL(self, robot_arm: str, pose: list, delta: bool) -> bool:
+    def servo_p_OL(
+        self,
+        robot_arm: str,
+        pose: list,
+        delta: bool,
+        debug_target_abs_pose: list | None = None,
+        debug_step_idx=None,
+        debug_queue_idx=None,
+    ) -> bool:
         """
         Send ServoP open loop with target pose [x, y, z, rx, ry, rz] (m, radians).
         Args:
             robot_arm: "left_robot" or "right_robot"
             pose: 末端位置(m, radians)
             delta: 绝对控制(False)，增量控制(True)
+            debug_target_abs_pose: 可选，仅用于 chunk-wise execution/server 对齐日志。
+                当 client 发送的是 absolute target -> one-shot delta 时，这里传入原始 absolute target，
+                server 可以打印 target_pose_server_reconstructed - target_abs_pose。
+            debug_step_idx/debug_queue_idx: 可选，仅用于肉眼对齐 execution 和 server 两端日志。
         Returns:
             bool: 成功返回 True，失败返回 False
         """
@@ -764,6 +941,15 @@ class NeroDualArmServer:
             pose = np.asarray(pose, dtype=float).reshape(-1)
             if pose.size != 6:
                 raise ValueError(f"Expected 6 pose values, got {pose.size}")
+            incoming_delta_pose = pose.copy() if delta else None
+            applied_delta_pose = None
+            debug_target_abs_pose_np = None
+            if debug_target_abs_pose is not None:
+                debug_target_abs_pose_np = np.asarray(debug_target_abs_pose, dtype=float).reshape(-1)
+                if debug_target_abs_pose_np.size != 6:
+                    raise ValueError(
+                        f"Expected 6 debug_target_abs_pose values, got {debug_target_abs_pose_np.size}"
+                    )
 
             # 3. 计算 target_pose
             _t0 = _time.perf_counter()
@@ -776,6 +962,7 @@ class NeroDualArmServer:
                 # Temporarily freeze orientation increments after repeated IK failures.
                 if _t_call_start < self._ik_freeze_rot_until.get(robot_arm, 0.0):
                     pose[3:] = 0.0
+                applied_delta_pose = pose.copy()
                 
                 # ⚠️ 关键修复：增量模式下使用 IK solver 内部状态计算当前位姿
                 # 而不是用实际关节角 q_current，保证 IK 求解的连续性
@@ -823,6 +1010,24 @@ class NeroDualArmServer:
                     current_pose_feedback = np.asarray(ik_solver.fk_pose(q_current), dtype=float)
                 ee_pose_for_debug = current_pose_feedback
                 target_xyz = np.asarray(target_pose[:3], dtype=float)
+
+            pose_reconstruction_error = None
+            if debug_target_abs_pose_np is not None:
+                pose_reconstruction_error = np.asarray(target_pose, dtype=float) - debug_target_abs_pose_np
+                pose_reconstruction_error[3:] = self._wrap_angle_delta(pose_reconstruction_error[3:])
+
+            if delta:
+                self._log_chunkwise_alignment_debug(
+                    robot_arm=robot_arm,
+                    incoming_delta_pose=np.asarray(incoming_delta_pose, dtype=float),
+                    applied_delta_pose=np.asarray(applied_delta_pose, dtype=float),
+                    cur_pose_server_before_apply=np.asarray(ee_pose_for_debug, dtype=float),
+                    target_pose_server_reconstructed=np.asarray(target_pose, dtype=float),
+                    debug_target_abs_pose=debug_target_abs_pose_np,
+                    pose_reconstruction_error=pose_reconstruction_error,
+                    debug_step_idx=debug_step_idx,
+                    debug_queue_idx=debug_queue_idx,
+                )
 
             if target_xyz[2] < self.limit_z:
                 log.warning(
@@ -888,6 +1093,12 @@ class NeroDualArmServer:
                 q_cmd=np.asarray(q_cmd, dtype=float),
                 ee_pose=ee_pose_for_debug,
                 target_pose=np.asarray(target_pose, dtype=float),
+                incoming_delta_pose=incoming_delta_pose,
+                applied_delta_pose=applied_delta_pose,
+                debug_target_abs_pose=debug_target_abs_pose_np,
+                pose_reconstruction_error=pose_reconstruction_error,
+                debug_step_idx=debug_step_idx,
+                debug_queue_idx=debug_queue_idx,
             )
 
             # 开环控制：不限制关节增量，让 IK solver 完全控制轨迹
