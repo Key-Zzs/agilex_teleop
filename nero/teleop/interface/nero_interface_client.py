@@ -7,7 +7,6 @@ Connects to nero_interface_server via zerorpc.
 import logging
 import numpy as np
 import zerorpc
-from typing import Optional, Dict, Any
 
 log = logging.getLogger(__name__)
 
@@ -176,15 +175,7 @@ class NeroDualArmClient:
             return True
         return self.server.servo_p(robot_arm, pose.tolist(), delta)
     
-    def servo_p_OL(
-        self,
-        robot_arm: str,
-        pose: np.ndarray,
-        delta: bool = False,
-        debug_target_abs_pose: Optional[np.ndarray] = None,
-        debug_step_idx: Optional[int] = None,
-        debug_queue_idx: Optional[Any] = None,
-    ) -> bool:
+    def servo_p_OL(self, robot_arm: str, pose: np.ndarray, delta: bool = False) -> bool:
         """
         Send ServoP open loop with target pose [x, y, z, rx, ry, rz] (m, radians).
         Args:
@@ -194,19 +185,7 @@ class NeroDualArmClient:
         """
         if self.server is None:
             return True
-        if debug_target_abs_pose is None and debug_step_idx is None and debug_queue_idx is None:
-            return self.server.servo_p_OL(robot_arm, pose.tolist(), delta)
-        target_abs_payload = (
-            None if debug_target_abs_pose is None else np.asarray(debug_target_abs_pose, dtype=float).tolist()
-        )
-        return self.server.servo_p_OL(
-            robot_arm,
-            pose.tolist(),
-            delta,
-            target_abs_payload,
-            debug_step_idx,
-            debug_queue_idx,
-        )
+        return self.server.servo_p_OL(robot_arm, pose.tolist(), delta)
     
     # ==================== Gripper ========
     
