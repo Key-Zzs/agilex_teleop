@@ -229,6 +229,7 @@ class NeroDualArmServer:
         target_pose: np.ndarray,
         q_state_before: np.ndarray | None,
         q_current: np.ndarray,
+        q_cmd: np.ndarray | None = None,
     ) -> None:
         remaining = self._absolute_servo_debug_remaining.get(robot_arm, 0)
         if remaining <= 0:
@@ -238,12 +239,18 @@ class NeroDualArmServer:
         q_state_drift = None
         if q_state_before is not None:
             q_state_drift = float(np.linalg.norm(np.asarray(q_current, dtype=float) - q_state_before))
+        q_cmd_step = None
+        if q_cmd is not None:
+            q_cmd_step = float(
+                np.linalg.norm(np.asarray(q_cmd, dtype=float).reshape(-1) - np.asarray(q_current, dtype=float).reshape(-1))
+            )
 
         log.info(
-            "[servo_p_OL abs debug %s %d/5] q_state_drift=%s | current_pose=%s | target_pose=%s",
+            "[servo_p_OL abs debug %s %d/5] q_state_drift=%s | q_cmd_step=%s | current_pose=%s | target_pose=%s",
             robot_arm,
             debug_index,
             None if q_state_drift is None else f"{q_state_drift:.4f}rad",
+            None if q_cmd_step is None else f"{q_cmd_step:.4f}rad",
             np.round(np.asarray(current_pose, dtype=float), 4).tolist(),
             np.round(np.asarray(target_pose, dtype=float), 4).tolist(),
         )
@@ -782,13 +789,6 @@ class NeroDualArmServer:
                 if current_pose_feedback is None:
                     current_pose_feedback = np.asarray(ik_solver.fk_pose(q_current), dtype=float)
                 target_xyz = np.asarray(target_pose[:3], dtype=float)
-                self._log_absolute_servo_debug(
-                    robot_arm=robot_arm,
-                    current_pose=current_pose_feedback,
-                    target_pose=target_pose,
-                    q_state_before=q_state_before,
-                    q_current=q_current,
-                )
 
             if target_xyz[2] < self.limit_z:
                 log.warning(
@@ -800,7 +800,7 @@ class NeroDualArmServer:
 
             # 4. IK 求解
             _t0 = _time.perf_counter()
-            q_cmd = ik_solver.solve(target_pose, limit_output_step=bool(delta))
+            q_cmd = ik_solver.solve(target_pose, limit_output_step=True)
             _timings['ik_solve'] = (_time.perf_counter() - _t0) * 1000
 
             # IK 超时保护：若单次解算超过阈值，则丢弃本次动作，避免控制环路滞后。
@@ -835,6 +835,17 @@ class NeroDualArmServer:
 
             if isinstance(q_cmd, np.ndarray):
                 q_cmd = q_cmd.tolist()
+
+            if not delta:
+                q_cmd = self._limit_joint_step(q_current, np.asarray(q_cmd, dtype=float)).tolist()
+                self._log_absolute_servo_debug(
+                    robot_arm=robot_arm,
+                    current_pose=current_pose_feedback,
+                    target_pose=target_pose,
+                    q_state_before=q_state_before,
+                    q_current=q_current,
+                    q_cmd=np.asarray(q_cmd, dtype=float),
+                )
 
             # 开环控制：不限制关节增量，让 IK solver 完全控制轨迹
             # 参考 test_pos_flw_ik.py 的做法
