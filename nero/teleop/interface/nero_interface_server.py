@@ -169,6 +169,10 @@ class NeroDualArmServer:
         self.servo_timing_print_every_n = 50
         self.gripper_print = False
         self._absolute_servo_debug_remaining = {"left_robot": 5, "right_robot": 5}
+        # Per-call introspection for notebook/debug use. This is updated on every `servo_p_OL` invocation so
+        # tests can inspect the exact current joints, solved joints, joint delta and ee pose without parsing
+        # log text.
+        self.last_servo_p_ol_debug = {"left_robot": None, "right_robot": None}
 
         # servo_p 开环控制记录的当前位姿
         self.left_cur_pose = None
@@ -255,6 +259,30 @@ class NeroDualArmServer:
             np.round(np.asarray(target_pose, dtype=float), 4).tolist(),
         )
         self._absolute_servo_debug_remaining[robot_arm] = remaining - 1
+
+    def _update_servo_p_ol_debug(
+        self,
+        robot_arm: str,
+        *,
+        delta: bool,
+        q_current: np.ndarray,
+        q_cmd: np.ndarray | None,
+        ee_pose: np.ndarray | None,
+        target_pose: np.ndarray,
+    ) -> None:
+        q_current_np = np.asarray(q_current, dtype=float).reshape(-1)
+        q_cmd_np = None if q_cmd is None else np.asarray(q_cmd, dtype=float).reshape(-1)
+        debug_payload = {
+            "delta": bool(delta),
+            "q_current": q_current_np.tolist(),
+            "q_cmd": None if q_cmd_np is None else q_cmd_np.tolist(),
+            "q_cmd_minus_q_current": None
+            if q_cmd_np is None
+            else (q_cmd_np - q_current_np).tolist(),
+            "ee_pose": None if ee_pose is None else np.asarray(ee_pose, dtype=float).reshape(-1).tolist(),
+            "target_pose": np.asarray(target_pose, dtype=float).reshape(-1).tolist(),
+        }
+        self.last_servo_p_ol_debug[robot_arm] = debug_payload
 
     # ==================== Left Arm State Query ====================
 
@@ -702,6 +730,7 @@ class NeroDualArmServer:
             q_current = None  # 初始化变量，避免 UnboundLocalError
             q_state_before = None
             current_pose_feedback = None
+            ee_pose_for_debug = None
             if delta:
                 if ik_solver.state is None:
                     q_current = self._get_current_joints(robot, timeout=2.0)
@@ -756,6 +785,7 @@ class NeroDualArmServer:
                 
                 cur_xyz = np.asarray(cur_pose[:3], dtype=float)
                 cur_rpy = np.asarray(cur_pose[3:], dtype=float)
+                ee_pose_for_debug = cur_pose
                 
                 # 调试日志改为 debug 级别，避免高频输出影响性能
                 log.debug(f"当前位姿 (from IK state): {cur_pose}")
@@ -788,6 +818,7 @@ class NeroDualArmServer:
                 target_pose = pose
                 if current_pose_feedback is None:
                     current_pose_feedback = np.asarray(ik_solver.fk_pose(q_current), dtype=float)
+                ee_pose_for_debug = current_pose_feedback
                 target_xyz = np.asarray(target_pose[:3], dtype=float)
 
             if target_xyz[2] < self.limit_z:
@@ -846,6 +877,15 @@ class NeroDualArmServer:
                     q_current=q_current,
                     q_cmd=np.asarray(q_cmd, dtype=float),
                 )
+
+            self._update_servo_p_ol_debug(
+                robot_arm,
+                delta=delta,
+                q_current=np.asarray(q_current, dtype=float),
+                q_cmd=np.asarray(q_cmd, dtype=float),
+                ee_pose=ee_pose_for_debug,
+                target_pose=np.asarray(target_pose, dtype=float),
+            )
 
             # 开环控制：不限制关节增量，让 IK solver 完全控制轨迹
             # 参考 test_pos_flw_ik.py 的做法
