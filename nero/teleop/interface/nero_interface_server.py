@@ -732,32 +732,33 @@ class NeroDualArmServer:
             q_state_before = None
             current_pose_feedback = None
             ee_pose_for_debug = None
-            if delta:
-                if ik_solver.state is None:
-                    q_current = self._get_current_joints(robot, timeout=2.0)
-                    if q_current is None:
-                        log.error("[ERROR] get_joint_angles timeout")
-                        return False
-                    ik_solver.init_state(q_current)
-                    log.info("[servo_p_OL] IK solver state initialized")
-                else:
-                    # 增量模式保持原有开环语义：优先沿用求解器内部连续状态，减少每拍都回读硬件
-                    # 带来的抖动和延迟。
-                    q_current = ik_solver.state.q_prev
+            # if delta:
+            #     if ik_solver.state is None:
+            #         q_current = self._get_current_joints(robot, timeout=2.0)
+            #         if q_current is None:
+            #             log.error("[ERROR] get_joint_angles timeout")
+            #             return False
+            #         ik_solver.init_state(q_current)
+            #         log.info("[servo_p_OL] IK solver state initialized")
+            #     else:
+            #         # 增量模式保持原有开环语义：优先沿用求解器内部连续状态，减少每拍都回读硬件
+            #         # 带来的抖动和延迟。
+            #         q_current = ik_solver.state.q_prev
+            # else:
+            if ik_solver.state is None:
+                q_current = self._get_current_joints(robot, timeout=2.0)
+                if q_current is None:
+                    log.error("[ERROR] get_joint_angles timeout")
+                    return False
+                ik_solver.init_state(q_current)
+                log.info("[servo_p_OL] IK solver state initialized")
             else:
-                if ik_solver.state is None:
-                    q_current = self._get_current_joints(robot, timeout=2.0)
-                    if q_current is None:
-                        log.error("[ERROR] get_joint_angles timeout")
-                        return False
-                    ik_solver.init_state(q_current)
-                    log.info("[servo_p_OL] IK solver state initialized")
-                else:
-                    q_state_before = np.asarray(ik_solver.state.q_prev, dtype=float).reshape(-1)
-                    q_current = q_state_before
-                # 绝对模式下，pose 仍然是世界坐标系下的完整 target pose；这里只是让
-                # IK 从内部连续状态起算，避免每拍 CAN 回读造成控制环路抖动和延迟。
-                current_pose_feedback = np.asarray(ik_solver.fk_pose(q_current), dtype=float)
+                q_current = ik_solver.state.q_prev
+                # q_state_before = np.asarray(ik_solver.state.q_prev, dtype=float).reshape(-1)
+                # q_current = q_state_before
+            # 绝对模式下，pose 仍然是世界坐标系下的完整 target pose；这里只是让
+            # IK 从内部连续状态起算，避免每拍 CAN 回读造成控制环路抖动和延迟。
+            current_pose_feedback = np.asarray(ik_solver.fk_pose(q_current), dtype=float)
             _timings['get_joints'] = (_time.perf_counter() - _t0) * 1000
             
             pose = np.asarray(pose, dtype=float).reshape(-1)
