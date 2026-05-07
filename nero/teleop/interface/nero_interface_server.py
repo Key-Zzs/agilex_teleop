@@ -725,7 +725,8 @@ class NeroDualArmServer:
             _timings['select_robot'] = (_time.perf_counter() - _t0) * 1000
 
             # 2. 开环控制：仅在首次调用时读取关节角初始化 IK 状态
-            # 后续调用跳过 CAN 读取，大幅减少延迟
+            # 后续调用跳过 CAN 读取，大幅减少延迟。delta=False 仍表示输入是绝对目标
+            # 位姿，但 IK seed/current 基准也沿用内部连续状态，而不是每拍硬件反馈。
             _t0 = _time.perf_counter()
             q_current = None  # 初始化变量，避免 UnboundLocalError
             q_state_before = None
@@ -744,17 +745,18 @@ class NeroDualArmServer:
                     # 带来的抖动和延迟。
                     q_current = ik_solver.state.q_prev
             else:
-                q_current = self._get_current_joints(robot, timeout=2.0)
-                if q_current is None:
-                    log.error("[ERROR] get_joint_angles timeout")
-                    return False
-                if ik_solver.state is not None and ik_solver.state.q_prev is not None:
+                if ik_solver.state is None:
+                    q_current = self._get_current_joints(robot, timeout=2.0)
+                    if q_current is None:
+                        log.error("[ERROR] get_joint_angles timeout")
+                        return False
+                    ik_solver.init_state(q_current)
+                    log.info("[servo_p_OL] IK solver state initialized")
+                else:
                     q_state_before = np.asarray(ik_solver.state.q_prev, dtype=float).reshape(-1)
-                # 绝对模式下，每一拍的目标位姿都是世界坐标系下的完整 target pose。
-                # 如果继续沿用开环 `q_prev` 作为 IK seed，内部状态与真实关节角的微小漂移会逐步
-                # 放大，表现为“命令几乎不动，但机械臂持续偏移”。这里显式用当前关节反馈重置
-                # solver state，让 absolute pose IK 始终从真实机器人状态起算。
-                ik_solver.init_state(q_current)
+                    q_current = q_state_before
+                # 绝对模式下，pose 仍然是世界坐标系下的完整 target pose；这里只是让
+                # IK 从内部连续状态起算，避免每拍 CAN 回读造成控制环路抖动和延迟。
                 current_pose_feedback = np.asarray(ik_solver.fk_pose(q_current), dtype=float)
             _timings['get_joints'] = (_time.perf_counter() - _t0) * 1000
             
