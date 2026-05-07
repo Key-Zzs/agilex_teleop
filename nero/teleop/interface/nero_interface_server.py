@@ -168,6 +168,7 @@ class NeroDualArmServer:
         self.enable_servo_timing_print = False
         self.servo_timing_print_every_n = 50
         self.gripper_print = False
+        self._absolute_servo_debug_remaining = {"left_robot": 5, "right_robot": 5}
 
         # servo_p 开环控制记录的当前位姿
         self.left_cur_pose = None
@@ -220,6 +221,33 @@ class NeroDualArmServer:
         dq = q_cmd - q_current
         dq = np.clip(dq, -self.max_joint_step_rad, self.max_joint_step_rad)
         return q_current + dq
+
+    def _log_absolute_servo_debug(
+        self,
+        robot_arm: str,
+        current_pose: np.ndarray,
+        target_pose: np.ndarray,
+        q_state_before: np.ndarray | None,
+        q_current: np.ndarray,
+    ) -> None:
+        remaining = self._absolute_servo_debug_remaining.get(robot_arm, 0)
+        if remaining <= 0:
+            return
+
+        debug_index = 6 - remaining
+        q_state_drift = None
+        if q_state_before is not None:
+            q_state_drift = float(np.linalg.norm(np.asarray(q_current, dtype=float) - q_state_before))
+
+        log.info(
+            "[servo_p_OL abs debug %s %d/5] q_state_drift=%s | current_pose=%s | target_pose=%s",
+            robot_arm,
+            debug_index,
+            None if q_state_drift is None else f"{q_state_drift:.4f}rad",
+            np.round(np.asarray(current_pose, dtype=float), 4).tolist(),
+            np.round(np.asarray(target_pose, dtype=float), 4).tolist(),
+        )
+        self._absolute_servo_debug_remaining[robot_arm] = remaining - 1
 
     # ==================== Left Arm State Query ====================
 
@@ -665,16 +693,33 @@ class NeroDualArmServer:
             # 后续调用跳过 CAN 读取，大幅减少延迟
             _t0 = _time.perf_counter()
             q_current = None  # 初始化变量，避免 UnboundLocalError
-            if ik_solver.state is None:
+            q_state_before = None
+            current_pose_feedback = None
+            if delta:
+                if ik_solver.state is None:
+                    q_current = self._get_current_joints(robot, timeout=2.0)
+                    if q_current is None:
+                        log.error("[ERROR] get_joint_angles timeout")
+                        return False
+                    ik_solver.init_state(q_current)
+                    log.info("[servo_p_OL] IK solver state initialized")
+                else:
+                    # 增量模式保持原有开环语义：优先沿用求解器内部连续状态，减少每拍都回读硬件
+                    # 带来的抖动和延迟。
+                    q_current = ik_solver.state.q_prev
+            else:
                 q_current = self._get_current_joints(robot, timeout=2.0)
                 if q_current is None:
                     log.error("[ERROR] get_joint_angles timeout")
                     return False
+                if ik_solver.state is not None and ik_solver.state.q_prev is not None:
+                    q_state_before = np.asarray(ik_solver.state.q_prev, dtype=float).reshape(-1)
+                # 绝对模式下，每一拍的目标位姿都是世界坐标系下的完整 target pose。
+                # 如果继续沿用开环 `q_prev` 作为 IK seed，内部状态与真实关节角的微小漂移会逐步
+                # 放大，表现为“命令几乎不动，但机械臂持续偏移”。这里显式用当前关节反馈重置
+                # solver state，让 absolute pose IK 始终从真实机器人状态起算。
                 ik_solver.init_state(q_current)
-                log.info("[servo_p_OL] IK solver state initialized")
-            else:
-                # 已初始化时，从 IK solver 状态获取当前关节角
-                q_current = ik_solver.state.q_prev
+                current_pose_feedback = np.asarray(ik_solver.fk_pose(q_current), dtype=float)
             _timings['get_joints'] = (_time.perf_counter() - _t0) * 1000
             
             pose = np.asarray(pose, dtype=float).reshape(-1)
@@ -734,7 +779,16 @@ class NeroDualArmServer:
             else:
                 # 绝对模式：直接使用目标位姿
                 target_pose = pose
+                if current_pose_feedback is None:
+                    current_pose_feedback = np.asarray(ik_solver.fk_pose(q_current), dtype=float)
                 target_xyz = np.asarray(target_pose[:3], dtype=float)
+                self._log_absolute_servo_debug(
+                    robot_arm=robot_arm,
+                    current_pose=current_pose_feedback,
+                    target_pose=target_pose,
+                    q_state_before=q_state_before,
+                    q_current=q_current,
+                )
 
             if target_xyz[2] < self.limit_z:
                 log.warning(
