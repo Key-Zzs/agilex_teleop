@@ -8,6 +8,7 @@ import numpy as np
 import logging
 import time
 import math
+import json
 from typing import Optional, List
 import sys, os
 import pdb
@@ -31,7 +32,14 @@ def quat_multiply(q1, q2):
 class NeroDualArmServer:
     """Dual-arm Nero server interface."""
     
-    def __init__(self, gripper_enabled: bool = True, tcp_offset_enabled: bool = False, limit_z: float = 0.07):
+    def __init__(
+        self,
+        gripper_enabled: bool = True,
+        tcp_offset_enabled: bool = False,
+        limit_z: float = 0.07,
+        debug_ik_joint7_drift: bool = False,
+        debug_ik_joint6_drift: bool = False,
+    ):
         self.gripper_enabled = gripper_enabled
         # Initialize IK handles early: go_home may run before IK setup completes.
         self.left_ik_solver = None
@@ -168,6 +176,16 @@ class NeroDualArmServer:
         self.enable_servo_timing_print = False
         self.servo_timing_print_every_n = 50
         self.gripper_print = False
+        self.debug_ik_joint_drift = (
+            bool(debug_ik_joint7_drift)
+            or bool(debug_ik_joint6_drift)
+            or self._env_flag_enabled("NERO_DEBUG_IK_JOINT7_DRIFT")
+            or self._env_flag_enabled("NERO_DEBUG_IK_JOINT6_DRIFT")
+            or self._env_flag_enabled("NERO_DEBUG_IK_JOINT_DRIFT")
+        )
+        self._ik_joint_drift_debug_count = {"left_robot": 0, "right_robot": 0}
+        if self.debug_ik_joint_drift:
+            log.info("[SERVER] debug_ik_joint_drift enabled for joint6/joint7")
         self._absolute_servo_debug_remaining = {"left_robot": 5, "right_robot": 5}
         # Per-call introspection for notebook/debug use. This is updated on every `servo_p_OL` invocation so
         # tests can inspect the exact current joints, solved joints, joint delta and ee pose without parsing
@@ -312,6 +330,133 @@ class NeroDualArmServer:
             "target_pose": np.asarray(target_pose, dtype=float).reshape(-1).tolist(),
         }
         self.last_servo_p_ol_debug[robot_arm] = debug_payload
+
+    @staticmethod
+    def _env_flag_enabled(name: str) -> bool:
+        value = os.getenv(name, "")
+        return value.strip().lower() in {"1", "true", "yes", "y", "on"}
+
+    @staticmethod
+    def _json_float_list(values, ndigits: int = 8):
+        if values is None:
+            return None
+        return [round(float(value), ndigits) for value in np.asarray(values, dtype=float).reshape(-1).tolist()]
+
+    @staticmethod
+    def _wrap_pose_delta(pose_delta: np.ndarray) -> np.ndarray:
+        wrapped = np.asarray(pose_delta, dtype=float).reshape(6).copy()
+        wrapped[3:] = (wrapped[3:] + np.pi) % (2.0 * np.pi) - np.pi
+        return wrapped
+
+    @staticmethod
+    def _joint_limit_status(ik_solver, q_cmd: np.ndarray, joint_index: int, margin: float = 0.08) -> dict:
+        joint_limits = getattr(ik_solver, "joint_limits", None)
+        q_cmd = np.asarray(q_cmd, dtype=float).reshape(-1)
+        q_value = float(q_cmd[joint_index])
+        if joint_limits is None or len(joint_limits) <= joint_index:
+            return {
+                "q_cmd": q_value,
+                "limits": None,
+                "distance_to_lower": None,
+                "distance_to_upper": None,
+                "near_limit": None,
+            }
+
+        lower, upper = joint_limits[joint_index]
+        lower = float(lower)
+        upper = float(upper)
+        return {
+            "q_cmd": q_value,
+            "limits": [lower, upper],
+            "distance_to_lower": float(q_value - lower),
+            "distance_to_upper": float(upper - q_value),
+            "near_limit": bool(q_value <= lower + margin or q_value >= upper - margin),
+        }
+
+    def _joint_drift_status(
+        self,
+        *,
+        ik_solver,
+        q_prev: np.ndarray,
+        q_cmd: np.ndarray,
+        q_delta: np.ndarray,
+        joint_index: int,
+    ) -> dict:
+        joint_status = self._joint_limit_status(ik_solver, q_cmd, joint_index)
+        joint_status.update(
+            {
+                "q_prev": float(q_prev[joint_index]),
+                "delta": float(q_delta[joint_index]),
+            }
+        )
+        return joint_status
+
+    def _log_ik_joint_drift_debug(
+        self,
+        *,
+        robot_arm: str,
+        delta: bool,
+        input_pose: np.ndarray,
+        current_reference_pose: np.ndarray,
+        target_pose: np.ndarray,
+        q_prev: np.ndarray,
+        q_cmd: np.ndarray,
+        ik_solver,
+        ik_solve_ms: float,
+        achieved_ee_pose_fk: np.ndarray | None,
+    ) -> None:
+        if not self.debug_ik_joint_drift:
+            return
+
+        q_prev = np.asarray(q_prev, dtype=float).reshape(-1)
+        q_cmd = np.asarray(q_cmd, dtype=float).reshape(-1)
+        target_pose = np.asarray(target_pose, dtype=float).reshape(6)
+        current_reference_pose = np.asarray(current_reference_pose, dtype=float).reshape(6)
+        target_delta = self._wrap_pose_delta(target_pose - current_reference_pose)
+        q_delta = q_cmd - q_prev
+
+        self._ik_joint_drift_debug_count[robot_arm] = self._ik_joint_drift_debug_count.get(robot_arm, 0) + 1
+        joint6_status = self._joint_drift_status(
+            ik_solver=ik_solver,
+            q_prev=q_prev,
+            q_cmd=q_cmd,
+            q_delta=q_delta,
+            joint_index=5,
+        )
+        joint7_status = self._joint_drift_status(
+            ik_solver=ik_solver,
+            q_prev=q_prev,
+            q_cmd=q_cmd,
+            q_delta=q_delta,
+            joint_index=6,
+        )
+        payload = {
+            "type": "ik_joint_drift",
+            "seq": int(self._ik_joint_drift_debug_count[robot_arm]),
+            "timestamp": float(time.time()),
+            "robot_arm": robot_arm,
+            "delta_mode": bool(delta),
+            "input_pose": self._json_float_list(input_pose),
+            "target_absolute_ee_pose": self._json_float_list(target_pose),
+            "current_reference_ee_pose": self._json_float_list(current_reference_pose),
+            "target_minus_current": {
+                "delta": self._json_float_list(target_delta),
+                "xyz_norm": float(np.linalg.norm(target_delta[:3])),
+                "rpy_norm": float(np.linalg.norm(target_delta[3:])),
+                "pose_norm": float(np.linalg.norm(target_delta)),
+            },
+            "q_prev_seed": self._json_float_list(q_prev),
+            "q_cmd": self._json_float_list(q_cmd),
+            "q_cmd_minus_q_prev": self._json_float_list(q_delta),
+            "joint6": joint6_status,
+            "joint7": joint7_status,
+            "joint_limit_margin_rad": 0.08,
+            "ik_solve_ms": float(ik_solve_ms),
+            "ik_report": getattr(ik_solver, "last_report", None),
+            "ik_jump_report": getattr(ik_solver, "last_jump_report", None),
+            "achieved_ee_pose_fk": self._json_float_list(achieved_ee_pose_fk),
+        }
+        log.info("[IK_JOINT_DRIFT_DEBUG] %s", json.dumps(payload, sort_keys=True))
 
     # ==================== Left Arm State Query ====================
 
@@ -863,6 +1008,7 @@ class NeroDualArmServer:
 
             # 4. IK 求解
             _t0 = _time.perf_counter()
+            q_seed_for_debug = np.asarray(q_current, dtype=float).reshape(-1).copy()
             q_cmd = ik_solver.solve(target_pose, limit_output_step=True)
             _timings['ik_solve'] = (_time.perf_counter() - _t0) * 1000
 
@@ -896,25 +1042,31 @@ class NeroDualArmServer:
                 self._ik_skip_until[robot_arm] = _t_call_start + self.ik_fail_cooldown_s
                 return False
 
-            if isinstance(q_cmd, np.ndarray):
-                q_cmd = q_cmd.tolist()
+            q_cmd_np = np.asarray(q_cmd, dtype=float).reshape(-1)
 
             if not delta:
-                q_cmd = self._limit_joint_step(q_current, np.asarray(q_cmd, dtype=float)).tolist()
+                q_cmd_np = self._limit_joint_step(q_current, q_cmd_np)
                 self._log_absolute_servo_debug(
                     robot_arm=robot_arm,
                     current_pose=current_pose_feedback,
                     target_pose=target_pose,
                     q_state_before=q_state_before,
                     q_current=q_current,
-                    q_cmd=np.asarray(q_cmd, dtype=float),
+                    q_cmd=q_cmd_np,
                 )
+
+            achieved_ee_pose_fk = None
+            if self.debug_ik_joint_drift:
+                try:
+                    achieved_ee_pose_fk = np.asarray(ik_solver.fk_pose(q_cmd_np), dtype=float).reshape(-1)
+                except Exception as debug_exc:
+                    log.warning("[IK_JOINT_DRIFT_DEBUG] failed to compute FK for %s: %s", robot_arm, debug_exc)
 
             self._update_servo_p_ol_debug(
                 robot_arm,
                 delta=delta,
                 q_current=np.asarray(q_current, dtype=float),
-                q_cmd=np.asarray(q_cmd, dtype=float),
+                q_cmd=q_cmd_np,
                 ee_pose=ee_pose_for_debug,
                 target_pose=np.asarray(target_pose, dtype=float),
             )
@@ -925,8 +1077,21 @@ class NeroDualArmServer:
 
             # 5. 下发关节控制
             _t0 = _time.perf_counter()
-            robot.move_js(q_cmd)
+            robot.move_js(q_cmd_np.tolist())
             _timings['send_command'] = (_time.perf_counter() - _t0) * 1000
+
+            self._log_ik_joint_drift_debug(
+                robot_arm=robot_arm,
+                delta=delta,
+                input_pose=pose,
+                current_reference_pose=ee_pose_for_debug,
+                target_pose=np.asarray(target_pose, dtype=float),
+                q_prev=q_seed_for_debug,
+                q_cmd=q_cmd_np,
+                ik_solver=ik_solver,
+                ik_solve_ms=_timings['ik_solve'],
+                achieved_ee_pose_fk=achieved_ee_pose_fk,
+            )
 
             # ========== 计时诊断（每次输出，用于调试50Hz性能） ==========
             _timings['total'] = (_time.perf_counter() - _t_start) * 1000
@@ -1462,8 +1627,24 @@ class NeroDualArmServer:
             log.error(f"[SERVER] Robot stop failed: {e}")
             return False
 
-def start_server(ip: str, port: int = 4242, gripper_enabled: bool = True, tcp_offset_enabled: bool = False, limit_z: float = 0.07):
-    server = zerorpc.Server(NeroDualArmServer(gripper_enabled, tcp_offset_enabled, limit_z))
+def start_server(
+    ip: str,
+    port: int = 4242,
+    gripper_enabled: bool = True,
+    tcp_offset_enabled: bool = False,
+    limit_z: float = 0.07,
+    debug_ik_joint7_drift: bool = False,
+    debug_ik_joint6_drift: bool = False,
+):
+    server = zerorpc.Server(
+        NeroDualArmServer(
+            gripper_enabled,
+            tcp_offset_enabled,
+            limit_z,
+            debug_ik_joint7_drift=debug_ik_joint7_drift,
+            debug_ik_joint6_drift=debug_ik_joint6_drift,
+        )
+    )
     server.bind(f"tcp://{ip}:{port}")
     log.info(f"[SERVER] Listening on tcp://{ip}:{port}")
     server.run()
@@ -1480,7 +1661,17 @@ if __name__ == '__main__':
     parser.add_argument('--no-gripper', action='store_false')
     parser.add_argument('--tcp-offset-enabled', action='store_true')
     parser.add_argument('--limit-z', type=float, default=0.26) # axis z_limit(m) in tcp pose
+    parser.add_argument('--debug-ik-joint7-drift', action='store_true')
+    parser.add_argument('--debug-ik-joint6-drift', action='store_true')
     args = parser.parse_args()
     logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(message)s', force=True)
 
-    start_server(ip=args.ip, port=args.port, gripper_enabled=args.no_gripper, tcp_offset_enabled=args.tcp_offset_enabled, limit_z=args.limit_z)
+    start_server(
+        ip=args.ip,
+        port=args.port,
+        gripper_enabled=args.no_gripper,
+        tcp_offset_enabled=args.tcp_offset_enabled,
+        limit_z=args.limit_z,
+        debug_ik_joint7_drift=args.debug_ik_joint7_drift,
+        debug_ik_joint6_drift=args.debug_ik_joint6_drift,
+    )
