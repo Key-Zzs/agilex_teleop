@@ -33,6 +33,9 @@ dynamics = [
     "eigenpy==3.12.0",
     "eiquadprog==1.3.0",
 ]
+test = [
+    "pytest>=7.0",
+]
 
 [project.urls]
 Homepage = "https://github.com/Key-Zzs/agilex_teleop"

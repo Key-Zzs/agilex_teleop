@@ -4,7 +4,36 @@ import os
 import sys
 import numpy as np
 from dataclasses import replace
-from pyAgxArm.utiles.tf import rpy_to_rot, rot_to_rpy
+
+
+def rpy_to_rot(roll: float, pitch: float, yaw: float):
+    """Rotation matrix for roll-pitch-yaw using ZYX convention."""
+    cr = math.cos(roll)
+    sr = math.sin(roll)
+    cp = math.cos(pitch)
+    sp = math.sin(pitch)
+    cy = math.cos(yaw)
+    sy = math.sin(yaw)
+    return [
+        [cy * cp, cy * sp * sr - sy * cr, cy * sp * cr + sy * sr],
+        [sy * cp, sy * sp * sr + cy * cr, sy * sp * cr - cy * sr],
+        [-sp, cp * sr, cp * cr],
+    ]
+
+
+def rot_to_rpy(R):
+    """Inverse of rpy_to_rot for ZYX convention. Returns [roll, pitch, yaw]."""
+    R = np.asarray(R, dtype=float)
+    r20 = float(R[2, 0])
+    pitch = math.asin(max(-1.0, min(1.0, -r20)))
+    cp = math.cos(pitch)
+    if abs(cp) < 1e-9:
+        roll = 0.0
+        yaw = math.atan2(float(-R[0, 1]), float(R[1, 1]))
+    else:
+        roll = math.atan2(float(R[2, 1]), float(R[2, 2]))
+        yaw = math.atan2(float(R[1, 0]), float(R[0, 0]))
+    return [roll, pitch, yaw]
 
 # 添加 ik_solver 路径
 # sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'kinematics'))
@@ -264,6 +293,8 @@ class Pinocchio_Solver:
         self.ee_frame_name = ee_frame_name
         self.ee_frame_id = self._resolve_ee_frame_id(ee_frame_name)
         self._active_q_idx, self._active_v_idx = self._resolve_active_joint_indices()
+        self.joint_names = self._resolve_active_joint_names()
+        self.frame_names = [frame.name for frame in self.model.frames]
         if len(self._active_q_idx) != len(self.joint_limits):
             raise RuntimeError(
                 f"URDF active joints({len(self._active_q_idx)}) and joint_limits"
@@ -369,6 +400,14 @@ class Pinocchio_Solver:
         v_idx = v_idx[: len(self.joint_limits)]
         return q_idx, v_idx
 
+    def _resolve_active_joint_names(self):
+        by_q_idx = {}
+        for joint_id in range(1, self.model.njoints):
+            jmodel = self.model.joints[joint_id]
+            if jmodel.nq == 1 and jmodel.nv == 1:
+                by_q_idx[jmodel.idx_q] = self.model.names[joint_id]
+        return [by_q_idx.get(q_idx, f"joint{i + 1}") for i, q_idx in enumerate(self._active_q_idx)]
+
     def _to_full_q(self, q):
         q_full = pin.neutral(self.model)
         q = np.asarray(q, dtype=float).reshape(-1)
@@ -409,6 +448,42 @@ class Pinocchio_Solver:
         T = self.fk_matrix(q)
         rpy = np.asarray(pin.rpy.matrixToRpy(T[:3, :3]), dtype=float)
         return np.concatenate([T[:3, 3], rpy])
+
+    def jacobian_matrix(self, q, reference_frame=None):
+        """
+        Return the 6xN geometric Jacobian for the configured TCP.
+
+        Rows are ordered as [linear_velocity; angular_velocity]. By default
+        velocities are expressed in a world-aligned frame, which matches the
+        finite-difference debug tools in this repository.
+        """
+        if reference_frame is None:
+            reference_frame = pin.ReferenceFrame.LOCAL_WORLD_ALIGNED
+        q = np.asarray(q, dtype=float).reshape(-1)
+        q_full = self._to_full_q(self._clamp_joints(q))
+        pin.forwardKinematics(self.model, self.data, q_full)
+        pin.updateFramePlacement(self.model, self.data, self.ee_frame_id)
+        J_full = pin.computeFrameJacobian(
+            self.model,
+            self.data,
+            q_full,
+            self.ee_frame_id,
+            reference_frame,
+        )
+        J = np.asarray(J_full[:, self._active_v_idx], dtype=float).copy()
+
+        tcp_translation = self._T_ee_tcp[:3, 3]
+        if (
+            reference_frame == pin.ReferenceFrame.LOCAL_WORLD_ALIGNED
+            and np.linalg.norm(tcp_translation) > 1e-12
+        ):
+            placement = self.data.oMf[self.ee_frame_id]
+            offset_world = np.asarray(placement.rotation, dtype=float) @ tcp_translation
+            for col in range(J.shape[1]):
+                J[:3, col] += np.cross(J[3:, col], offset_world)
+        return J
+
+    jacobian = jacobian_matrix
     
     def _pose_to_matrix(self, pose):
         """将 6D pose [x, y, z, roll, pitch, yaw] 转换为 4x4 齐次变换矩阵"""
@@ -539,6 +614,10 @@ class Pinocchio_Solver:
             "rot_error_rad": float(rot_err),
             "urdf_path": self.urdf_path,
             "ee_frame": self.ee_frame_name,
+            "reason": "converged" if converged else "max_iterations",
+            "timed_out": bool((not converged) and iter_count >= self.max_iterations),
+            "last_q": q.astype(float).tolist(),
+            "best_q": q.astype(float).tolist(),
         }
         self.last_report = report
 
@@ -575,5 +654,6 @@ class Pinocchio_Solver:
             theta0_prev=None,
             q_lock=q_out,
         )
+        self.last_report["solution_q"] = q_out.astype(float).tolist()
         
         return q_out
