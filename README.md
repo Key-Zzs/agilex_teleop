@@ -16,19 +16,6 @@ Required equipment for this project:
 
 ---
 
-## TODOs
-
-- [ ] Arm Control Issues
-  - [ ] Motion filtering ([1€ filter](https://github.com/casiez/OneEuroFilter))
-  - [ ] IK issues (consult AgileX/Songling technical support)
-    - [ ] Control frequency?
-    - [ ] Solving method (consider using other IK libraries with [nero urdf model](https://github.com/agilexrobotics/agx_arm_urdf), recommended [ikpy](https://github.com/ikpy/ikpy) and [frax](https://github.com/danielpmorton/frax))
-- [ ] Gripper Issues
-  - [ ] [Pika gripper SDK](https://github.com/agilexrobotics/pika_sdk) adaptation
-  - [ ] Response speed (first port Pika gripper SDK to project, if issues persist after testing then investigate SDK and [Server project](nero/teleop/interface/nero_interface_server.py) implementation of `left_gripper_goto()` and `right_gripper_goto()`)
-
----
-
 ## 0 Environment Setup
 
 ### 0.1 Create Conda Virtual Environment

@@ -10,3 +10,6 @@ build
 *.so
 temp
 .VSCodeCounter
+.codex
+.claude
+.agents
