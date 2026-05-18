@@ -8,11 +8,25 @@ import numpy as np
 import logging
 import time
 import math
+from dataclasses import dataclass
 from typing import Optional, List
 import sys, os
 import pdb
 
-from nero.kinematics.analytic_IK_solver import Pinocchio_Solver
+_PKL_SRC = os.path.abspath(
+    os.path.join(os.path.dirname(__file__), "..", "..", "pinocchio-kinematics-lite", "src")
+)
+if os.path.isdir(_PKL_SRC) and _PKL_SRC not in sys.path:
+    sys.path.insert(0, _PKL_SRC)
+
+from pinocchio_kinematics_lite import (
+    DEFAULT_NERO_END_EFFECTOR_FRAME,
+    DEFAULT_NERO_JOINT_NAMES,
+    PinocchioKinematics,
+    get_robot_urdf_path,
+    pose_matrix_from_xyz_rpy,
+    xyz_rpy_from_pose_matrix,
+)
 # from nero.kinematics.nero_kinematics.nero_ik.ik_solver import fk
 
 log = logging.getLogger(__name__)
@@ -28,6 +42,229 @@ def quat_multiply(q1, q2):
         w1*z2 + x1*y2 - y1*x2 + z1*w2,  # z
         w1*w2 - x1*x2 - y1*y2 - z1*z2   # w
     )
+
+
+@dataclass
+class KinematicsRuntimeState:
+    """Runtime state shape expected by the teleop control loop."""
+
+    q_prev: np.ndarray
+    q_prev2: Optional[np.ndarray] = None
+    theta0_prev: Optional[float] = None
+    q_lock: Optional[np.ndarray] = None
+
+
+class PinocchioKinematicsServoAdapter:
+    """Compatibility wrapper that drives server IK through PinocchioKinematics."""
+
+    def __init__(
+        self,
+        *,
+        urdf_path,
+        end_effector_frame: str,
+        active_joint_names,
+        joint_limits,
+        dt: float,
+        tcp_offset=None,
+        max_iterations: int = 60,
+        damping: float = 1e-4,
+        tol_pos: float = 1e-4,
+        tol_rot: float = 5e-3,
+    ):
+        self.kinematics = PinocchioKinematics(
+            urdf_path=urdf_path,
+            end_effector_frame=end_effector_frame,
+            active_joint_names=active_joint_names,
+            joint_limits=joint_limits,
+            model_name="nero_7dof_server",
+        )
+        self.urdf_path = self.kinematics.urdf_path
+        self.ee_frame_name = end_effector_frame
+        self.joint_names = self.kinematics.list_joints()
+        self.frame_names = self.kinematics.list_frames()
+        self.joint_limits = self.kinematics.get_joint_limits()
+        self.dt = float(dt)
+        self.max_iterations = int(max_iterations)
+        self.damping = float(damping)
+        self.tol_pos = float(tol_pos)
+        self.tol_rot = float(tol_rot)
+
+        self.max_joint_vel = np.array([2.2, 2.0, 2.2, 2.2, 2.6, 2.6, 3.0], dtype=float)
+        self.min_step_limit = 0.03
+        self.jump_detect_scale = 3.0
+        self.hard_jump_limit = 0.90
+
+        self.last_report = None
+        self.last_jump_report = None
+        self.state = None
+        self.set_tool_offset([0.0, 0.0, 0.0, 0.0, 0.0, 0.0] if tcp_offset is None else tcp_offset)
+
+    def set_tool_offset(self, tcp_offset):
+        """Set TCP offset relative to the URDF end-effector frame."""
+        self.tcp_offset = np.asarray(tcp_offset, dtype=float).reshape(-1)
+        if self.tcp_offset.size != 6:
+            raise ValueError(f"Expected 6 tcp_offset values, got {self.tcp_offset.size}")
+        self._T_ee_tcp = self._pose6_to_matrix(self.tcp_offset)
+        self._T_tcp_ee = np.linalg.inv(self._T_ee_tcp)
+
+    def fk_matrix(self, q):
+        q = self._clamp_joints(q)
+        return self.kinematics.forward_kinematics(q) @ self._T_ee_tcp
+
+    def fk_pose(self, q):
+        xyz, rpy = xyz_rpy_from_pose_matrix(self.fk_matrix(q))
+        return np.concatenate([xyz, rpy])
+
+    def jacobian_matrix(self, q):
+        q = self._clamp_joints(q)
+        J = self.kinematics.jacobian(q).copy()
+        tcp_translation = self._T_ee_tcp[:3, 3]
+        if np.linalg.norm(tcp_translation) > 1e-12:
+            T_world_ee = self.kinematics.forward_kinematics(q)
+            offset_world = T_world_ee[:3, :3] @ tcp_translation
+            for col in range(J.shape[1]):
+                J[:3, col] += np.cross(J[3:, col], offset_world)
+        return J
+
+    jacobian = jacobian_matrix
+
+    def init_state(self, current_q):
+        current_q = self._clamp_joints(current_q)
+        self.state = KinematicsRuntimeState(q_prev=current_q.copy())
+
+    def solve(self, target_pose, limit_output_step: bool = True):
+        """Solve target TCP pose [x, y, z, roll, pitch, yaw] with PinocchioKinematics."""
+        target_pose = np.asarray(target_pose, dtype=float).reshape(-1)
+        if target_pose.size != 6:
+            raise ValueError(f"Expected 6 pose values, got {target_pose.size}")
+
+        if self.state is None or self.state.q_prev is None:
+            limits = self.kinematics.get_joint_limits()
+            q_seed = 0.5 * (limits[:, 0] + limits[:, 1])
+            self.state = KinematicsRuntimeState(q_prev=q_seed.copy())
+        else:
+            q_seed = self._clamp_joints(self.state.q_prev)
+
+        T_target_tcp = self._pose6_to_matrix(target_pose)
+        T_target_ee = T_target_tcp @ self._T_tcp_ee
+        result = self.kinematics.inverse_kinematics(
+            T_target_ee,
+            q_init=q_seed,
+            max_iters=self.max_iterations,
+            pos_tol=self.tol_pos,
+            ori_tol=self.tol_rot,
+            damping=self.damping,
+            max_step=float(np.max(self._compute_step_limit())),
+        )
+        self.last_report = self._make_report(result)
+
+        if not result.success or result.q is None:
+            log.warning(
+                "[IK] PinocchioKinematics solve failed: reason=%s, pos=%s, rot=%s, iters=%s",
+                result.reason,
+                result.position_error,
+                result.orientation_error,
+                result.iterations,
+            )
+            return None
+
+        q_cmd = self._clamp_joints(result.q)
+        if limit_output_step:
+            q_out, jump_report = self._detect_and_guard_output(q_cmd)
+        else:
+            q_out = q_cmd
+            jump_report = {
+                "jump_detected": False,
+                "joint_indices": [],
+                "dq_raw": [0.0] * len(q_out),
+                "dq_limited": [0.0] * len(q_out),
+                "mode": "bypass_rate_limit",
+            }
+
+        self.last_jump_report = jump_report
+        if jump_report["jump_detected"]:
+            idx_str = ",".join(str(i + 1) for i in jump_report["joint_indices"])
+            log.warning("[IK] jump detected on joints [%s], guard mode=%s", idx_str, jump_report["mode"])
+
+        q_prev2 = None if self.state.q_prev is None else self.state.q_prev.copy()
+        self.state = KinematicsRuntimeState(
+            q_prev=q_out.copy(),
+            q_prev2=q_prev2,
+            theta0_prev=None,
+            q_lock=q_out.copy(),
+        )
+        self.last_report["solution_q"] = q_out.astype(float).tolist()
+        return q_out
+
+    def _make_report(self, result):
+        return {
+            "method": "pinocchio_kinematics_lite",
+            "converged": bool(result.success),
+            "iterations": int(result.iterations),
+            "pos_error_m": None if result.position_error is None else float(result.position_error),
+            "rot_error_rad": None if result.orientation_error is None else float(result.orientation_error),
+            "solve_time_ms": float(result.solve_time_ms),
+            "urdf_path": self.urdf_path,
+            "ee_frame": self.ee_frame_name,
+            "target_frame": "tcp",
+            "reason": result.reason,
+            "timed_out": result.reason == "max_iterations",
+            "last_q": None if result.last_q is None else np.asarray(result.last_q, dtype=float).tolist(),
+            "best_q": None if result.best_q is None else np.asarray(result.best_q, dtype=float).tolist(),
+        }
+
+    def _pose6_to_matrix(self, pose6):
+        pose6 = np.asarray(pose6, dtype=float).reshape(-1)
+        if pose6.size != 6:
+            raise ValueError(f"Expected 6 pose values, got {pose6.size}")
+        return pose_matrix_from_xyz_rpy(pose6[:3], pose6[3:])
+
+    def _clamp_joints(self, q):
+        return self.kinematics.clip_to_joint_limits(np.asarray(q, dtype=float).reshape(-1))
+
+    def _compute_step_limit(self):
+        return np.maximum(self.max_joint_vel * self.dt, self.min_step_limit)
+
+    def _detect_and_guard_output(self, q_cmd):
+        q_cmd = np.asarray(q_cmd, dtype=float).reshape(-1)
+        if self.state is None or self.state.q_prev is None:
+            zeros = [0.0] * len(q_cmd)
+            return self._clamp_joints(q_cmd), {
+                "jump_detected": False,
+                "joint_indices": [],
+                "dq_raw": zeros,
+                "dq_limited": zeros,
+                "mode": "no_prev_state",
+            }
+
+        q_prev = np.asarray(self.state.q_prev, dtype=float).reshape(-1)
+        dq_raw = (q_cmd - q_prev + np.pi) % (2.0 * np.pi) - np.pi
+
+        step_limit = self._compute_step_limit()
+        detect_limit = np.maximum(step_limit * self.jump_detect_scale, self.min_step_limit)
+
+        jump_mask = np.abs(dq_raw) > detect_limit
+        very_large_jump = np.any(np.abs(dq_raw) > self.hard_jump_limit)
+
+        dq_limited = np.clip(dq_raw, -step_limit, step_limit)
+        q_safe = self._clamp_joints(q_prev + dq_limited)
+
+        if very_large_jump:
+            q_safe = q_prev.copy()
+
+        jump_report = {
+            "jump_detected": bool(np.any(jump_mask)),
+            "joint_indices": np.where(jump_mask)[0].astype(int).tolist(),
+            "dq_raw": dq_raw.astype(float).tolist(),
+            "dq_limited": dq_limited.astype(float).tolist(),
+            "step_limit": step_limit.astype(float).tolist(),
+            "detect_limit": detect_limit.astype(float).tolist(),
+            "very_large_jump": bool(very_large_jump),
+            "mode": "freeze" if very_large_jump else "rate_limit",
+        }
+        return q_safe, jump_report
+
+
 class NeroDualArmServer:
     """Dual-arm Nero server interface."""
     
@@ -950,17 +1187,25 @@ class NeroDualArmServer:
             lo, hi = cfg["joint_limits"][f"joint{i}"]
             joint_limits.append((lo, hi))
 
-        # 实例化解析 IK 求解器
-        ik_solver = Pinocchio_Solver(
+        urdf_path = get_robot_urdf_path("nero", self.ik_urdf_path)
+
+        # 通过 PinocchioKinematics 实例化 server IK 适配层
+        ik_solver = PinocchioKinematicsServoAdapter(
+            urdf_path=urdf_path,
+            end_effector_frame=DEFAULT_NERO_END_EFFECTOR_FRAME,
+            active_joint_names=DEFAULT_NERO_JOINT_NAMES,
             joint_limits=joint_limits,
             dt=self.dt,
-            n_psi=181,
             tcp_offset=self.tcp_offset,
         )
 
         # 机器人的真实状态给 IK 求解器初始化
         ik_solver.init_state(current_joints)
-        log.info(f"[{robot_name}] IK Solver 初始化完成！初始关节角: {np.array(current_joints).round(3)}")
+        log.info(
+            f"[{robot_name}] PinocchioKinematics IK 初始化完成！"
+            f"URDF: {urdf_path}, ee_frame: {DEFAULT_NERO_END_EFFECTOR_FRAME}, "
+            f"初始关节角: {np.array(current_joints).round(3)}"
+        )
         
         return ik_solver
     
